@@ -1,0 +1,37 @@
+# ─────────────────────────────────────────────────────────────
+# Your Method: Curriculum augmentation on CIFAR-10
+# Run: python experiments/train.py --config configs/cifar10_curriculum_loss.yaml
+# ─────────────────────────────────────────────────────────────
+
+experiment_name: cifar10_curriculum_cosine
+seed: 42
+use_wandb: true
+
+data:
+  dataset: cifar10
+  root: ./data/raw
+  batch_size: 128
+
+model:
+  name: resnet18
+  pretrained: false
+
+augmentation:
+  strategy: curriculum       # none | static | random | curriculum
+  mode: loss_guided          # class | instance | loss
+  schedule: multistep           # linear | cosine | step
+  warmup_epochs: 5
+  primitives:
+    - flip
+    - crop
+    - color_jitter
+    - rotation
+    - grayscale
+
+training:
+  epochs: 150
+  optimizer: sgd
+  lr: 0.1
+  weight_decay: 0.0005
+  scheduler: multistep
+  checkpoint_dir: ./checkpoints

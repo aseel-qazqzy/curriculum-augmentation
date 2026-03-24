@@ -1,0 +1,53 @@
+# ─────────────────────────────────────────
+# Curriculum-Style Augmentation for Image Classification
+# Requirements File
+# Python >= 3.9
+# ─────────────────────────────────────────
+
+# ── Core Deep Learning ──────────────────
+torch>=2.0.0
+torchvision>=0.15.0
+torchaudio>=2.0.0          # optional, needed if torch ecosystem tools require it
+
+# ── Data & Augmentation ─────────────────
+numpy>=1.24.0
+Pillow>=9.5.0
+opencv-python>=4.7.0       # for custom augmentation ops
+albumentations>=1.3.0      # augmentation library (useful for primitives)
+timm>=0.9.0                # pretrained models (ResNet, ViT, EfficientNet, etc.)
+
+# ── Configuration ───────────────────────
+pyyaml>=6.0                # YAML config parsing
+omegaconf>=2.3.0           # advanced config management (optional but recommended)
+hydra-core>=1.3.0          # config + CLI sweeps (optional, for ablations)
+
+# ── Experiment Tracking ─────────────────
+wandb>=0.15.0              # primary experiment tracker
+tensorboard>=2.13.0        # alternative / backup tracker
+
+# ── Analysis & Visualization ────────────
+matplotlib>=3.7.0
+seaborn>=0.12.0
+pandas>=2.0.0
+scikit-learn>=1.2.0        # metrics, confusion matrix, etc.
+scipy>=1.10.0
+
+# ── Robustness Evaluation ───────────────
+# CIFAR-10-C / CIFAR-100-C evaluation
+# No pip package — datasets downloaded manually from:
+# https://zenodo.org/record/2535967
+
+# ── Notebook Support ────────────────────
+jupyter>=1.0.0
+ipykernel>=6.22.0
+ipywidgets>=8.0.0          # interactive widgets in notebooks
+tqdm>=4.65.0               # progress bars
+
+# ── Utilities ───────────────────────────
+einops>=0.6.1              # tensor operations (useful for ViT-style models)
+rich>=13.0.0               # beautiful terminal output / logging
+python-dotenv>=1.0.0       # manage environment variables
+
+# ── Testing ─────────────────────────────
+pytest>=7.3.0
+pytest-cov>=4.1.0

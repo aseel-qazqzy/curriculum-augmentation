@@ -1,0 +1,33 @@
+# Model checkpoints
+checkpoints/
+*.pth
+*.pt
+
+# Raw data
+data/raw/
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+dist/
+build/
+
+# Notebooks
+.ipynb_checkpoints/
+
+# Experiment tracking
+wandb/
+mlruns/
+
+# Environment
+.env
+*.env
+venv/
+.venv/
+
+# OS
+.DS_Store
+data/
+data/
+notebooks/data/
