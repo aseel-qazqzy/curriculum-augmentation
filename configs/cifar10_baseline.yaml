@@ -1,0 +1,33 @@
+# ─────────────────────────────────────────────────────────────
+# Baseline: Static standard augmentation on CIFAR-10
+# Run: python experiments/train.py --config configs/cifar10_baseline.yaml
+# ─────────────────────────────────────────────────────────────
+
+experiment_name: cifar10_baseline
+seed: 42
+use_wandb: true
+
+data:
+  dataset: cifar10
+  root: ./data/raw
+  batch_size: 128
+
+model:
+  name: resnet18
+  pretrained: false
+
+augmentation:
+  strategy: static           # none | static | random | curriculum
+  schedule: linear           # linear | cosine | step (only used for curriculum)
+  warmup_epochs: 0
+  primitives:
+    - flip
+    - crop
+
+training:
+  epochs: 200
+  optimizer: sgd
+  lr: 0.1
+  weight_decay: 0.0005
+  scheduler: cosine_annealing
+  checkpoint_dir: ./checkpoints
