@@ -12,16 +12,17 @@ CHECKPOINT_DIR = str(PROJECT_ROOT / "checkpoints")
 
 BASE_CONFIG = {
     # Data
-    "dataset":         "cifar10",
+    "dataset":         "cifar100",
     "data_root":       str(PROJECT_ROOT / "data"),
     "val_split":       0.1,
 
     # Model
-    "model":           "resnet18",
+    "model":           "resnet50",
 
     # Training
-    "epochs":          150,
+    "epochs":          100,
     "batch_size":      128,
+    "fixed_strength":  0.7,         # augmentation op strength (0.0–1.0); used by static & tiered CL
     "lr":              0.1,
     "optimizer":       "sgd",
     "weight_decay":    5e-4,

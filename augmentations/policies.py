@@ -27,9 +27,27 @@ from augmentations.primitives import AUGMENTATION_REGISTRY
 from data.datasets import CIFAR_STATS as STATS
 
 
+# ── Shared constants ──────────────────────────────────────────────────────────
+# Both static and 3-tier curriculum use the same per-op strength.
+# The ONLY difference between them is WHEN each op is introduced.
+# This isolates the curriculum contribution cleanly.
+FIXED_STRENGTH = 0.7
+
+# Op groups by tier — matches the difficulty levels in primitives.py
+# blur removed: deterministic blur on 32x32 CIFAR images every epoch
+# creates a training/val distribution shift that harms all methods equally.
+# 7 ops total — flip, crop, color_jitter, rotation, shear, grayscale, cutout.
+_TIER_OPS = {
+    1: ["flip", "crop"],                                                   # Easy
+    2: ["flip", "crop", "color_jitter", "rotation", "shear"],             # +Medium
+    3: ["flip", "crop", "color_jitter", "rotation", "shear",
+        "grayscale", "cutout"],                                            # +Hard (7 ops, no blur)
+}
+# ─────────────────────────────────────────────────────────────────────────────
+
 
 # POLICY BASE CLASS
- 
+
 
 class AugmentationPolicy:
     """
@@ -75,24 +93,139 @@ class NoAugmentation(AugmentationPolicy):
 
 # 2. STATIC AUGMENTATION — Main baseline
 
+class _FullStaticTransform:
+    """
+    All 7 ops applied at FIXED_STRENGTH from epoch 1 — no schedule, no ordering.
+
+    Ops (same 7 as the 3-tier curriculum, same FIXED_STRENGTH):
+        1. flip         — horizontal flip
+        2. crop         — random crop with padding
+        3. color_jitter — brightness / contrast / saturation / hue
+        4. rotation     — random rotation
+        5. shear        — random affine shear
+        6. grayscale    — random grayscale conversion
+        7. cutout       — erase a square patch
+
+    blur excluded: deterministic blur on 32x32 images every epoch creates
+    a training/val distribution shift that harms learning regardless of method.
+
+    The ONLY difference vs ThreeTierCurriculumTransform: static applies all
+    7 ops from epoch 1. Strength is identical (FIXED_STRENGTH) in both methods.
+    """
+
+    def __init__(self, dataset: str = "cifar10", strength: float = FIXED_STRENGTH):
+        mean = STATS[dataset]["mean"]
+        std  = STATS[dataset]["std"]
+        self.normalize = T.Normalize(mean, std)
+        self.to_tensor = T.ToTensor()
+        self.strength  = strength
+
+    def __call__(self, img):
+        for name in _TIER_OPS[3]:   # all 7 ops, every epoch
+            fn, _, _ = AUGMENTATION_REGISTRY[name]
+            img = fn(img, self.strength)
+        return self.normalize(self.to_tensor(img))
+
+
 class StaticAugmentation(AugmentationPolicy):
     """
-    Standard fixed augmentation pipeline.
-    This is the most important baseline — your curriculum method must beat this.
+    All 8 augmentation primitives (difficulty=0.70) applied at full strength
+    from epoch 1 — no schedule, no loss signal.
 
-    This is what most papers use as their default training augmentation.
-    Matches the pipeline from your original Colab code.
+    Matches the max_difficulty=0.70 cap used in all CL experiments, so the
+    only variable between static and CL is the progressive ordering —
+    not the set of operations.
+
+    Your curriculum method must beat this to prove that ordering matters.
     """
 
-    def get_train_transform(self) -> T.Compose:
-        return T.Compose([
-            T.RandomCrop(32, padding=4),
-            T.RandomHorizontalFlip(),
-            T.ColorJitter(brightness=0.4, contrast=0.2, saturation=0.2, hue=0.1),
-            T.ToTensor(),
-            self.normalize,
-        ])
+    def __init__(self, dataset: str = "cifar10", strength: float = FIXED_STRENGTH):
+        super().__init__(dataset=dataset)
+        self.strength = strength
 
+    def get_train_transform(self) -> "_FullStaticTransform":
+        return _FullStaticTransform(dataset=self.dataset, strength=self.strength)
+
+
+
+# 3-TIER CURRICULUM AUGMENTATION
+
+class ThreeTierCurriculumTransform:
+    """
+    Introduces augmentation ops in three progressive tiers aligned with the
+    MultiStepLR milestones [33, 66]:
+
+        Tier 1 — epochs   1–t1  : flip, crop                          (easy)
+        Tier 2 — epochs t1+1–t2 : + color_jitter, rotation, shear     (+medium)
+        Tier 3 — epochs t2+1–end: + grayscale, blur, cutout           (+hard, all 8)
+
+    All ops use FIXED_STRENGTH throughout — identical to _FullStaticTransform.
+    The ONLY variable vs static aug is WHEN each op is introduced.
+
+    Call set_epoch(epoch) at the start of every training epoch so the
+    transform knows which tier is active.
+    """
+
+    TIER_LABELS = {
+        1: "Tier 1 [flip, crop]",
+        2: "Tier 2 [+color_jitter, rotation, shear]",
+        3: "Tier 3 [+grayscale, cutout]",
+    }
+
+    def __init__(self, dataset: str = "cifar10", t1: int = 33, t2: int = 66,
+                 strength: float = FIXED_STRENGTH):
+        mean = STATS[dataset]["mean"]
+        std  = STATS[dataset]["std"]
+        self.normalize = T.Normalize(mean, std)
+        self.to_tensor = T.ToTensor()
+        self.t1       = t1
+        self.t2       = t2
+        self.epoch    = 1
+        self.strength = strength
+
+    def set_epoch(self, epoch: int) -> None:
+        self.epoch = epoch
+
+    def tier(self) -> int:
+        if self.epoch <= self.t1:
+            return 1
+        elif self.epoch <= self.t2:
+            return 2
+        return 3
+
+    def tier_label(self) -> str:
+        return self.TIER_LABELS[self.tier()]
+
+    def __call__(self, img):
+        for name in _TIER_OPS[self.tier()]:
+            fn, _, _ = AUGMENTATION_REGISTRY[name]
+            img = fn(img, self.strength)
+        return self.normalize(self.to_tensor(img))
+
+
+class ThreeTierCurriculumAugmentation(AugmentationPolicy):
+    """
+    3-tier curriculum augmentation policy.
+
+    Tier boundaries default to [33, 66] to match MultiStepLR milestones —
+    each LR drop coincides with the introduction of the next op tier:
+        Tier 1 (easy)   → first LR drop at epoch 33 → Tier 2 (medium)
+        Tier 2 (medium) → second LR drop at epoch 66 → Tier 3 (hard)
+
+    Use with train_baseline.py --augmentation tiered_curriculum.
+    The training loop must call train_transform.set_epoch(epoch) each epoch.
+    """
+
+    def __init__(self, dataset: str = "cifar10", t1: int = 33, t2: int = 66,
+                 strength: float = FIXED_STRENGTH):
+        super().__init__(dataset=dataset)
+        self.t1       = t1
+        self.t2       = t2
+        self.strength = strength
+
+    def get_train_transform(self) -> ThreeTierCurriculumTransform:
+        return ThreeTierCurriculumTransform(dataset=self.dataset, t1=self.t1, t2=self.t2,
+                                            strength=self.strength)
 
 
 # RANDOM AUGMENT TRANSFORM
@@ -100,7 +233,7 @@ class StaticAugmentation(AugmentationPolicy):
 class RandomAugmentTransform:
     """
     Applies all 10 primitives from AUGMENTATION_REGISTRY with independently
-    sampled random strengths in [0, 1] — no schedule, no loss signal.
+    sampled random strengths in [0, 1].
 
     This is the RQ2 controlled baseline for the thesis:
         Same op pool as LGCA, same capacity, but no ordering.
@@ -199,10 +332,11 @@ class RandAugmentPolicy(AugmentationPolicy):
 
 
 POLICY_REGISTRY = {
-    "none":        NoAugmentation,
-    "static":      StaticAugmentation,
-    "random":      RandomAugmentation,
-    "randaugment": RandAugmentPolicy,
+    "none":              NoAugmentation,
+    "static":            StaticAugmentation,
+    "tiered_curriculum": ThreeTierCurriculumAugmentation,
+    "random":            RandomAugmentation,
+    "randaugment":       RandAugmentPolicy,
 }
 
 
@@ -262,7 +396,6 @@ THESIS_BASELINES = {
  }
 
 
-# QUICK TEST
 
 if __name__ == "__main__":
     import numpy as np

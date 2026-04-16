@@ -27,54 +27,111 @@ CHECKPOINT_DIR = str(_PROJECT_ROOT / "checkpoints")
 FIGURES_DIR    = str(_PROJECT_ROOT / "results" / "figures")
 os.makedirs(FIGURES_DIR, exist_ok=True)
 
-# PALETTE & STYLE
+# PALETTE — colorblind-friendly (Wong 2011, Nature Methods)
 PALETTE = {
-    "no_aug":  "#D62728",
-    "static":  "#1F77B4",
-    "cl":      "#2CA02C",
-    "cosine":  "#FF7F0E",
-    "adam":    "#9467BD",
+    "no_aug": "#999999",   # neutral gray
+    "static": "#0072B2",   # blue
+    "cl":     "#009E73",   # green
+    "cosine": "#E69F00",   # orange
+    "adam":   "#CC79A7",   # pink
 }
 
+# Research paper style — clean, minimal, publication-ready
 plt.rcParams.update({
-    "figure.facecolor":  "white",
-    "axes.facecolor":    "#FAFAFA",
-    "axes.edgecolor":    "#CCCCCC",
-    "axes.linewidth":    1.0,
-    "axes.spines.top":   False,
-    "axes.spines.right": False,
-    "axes.grid":         True,
-    "grid.color":        "#E0E0E0",
-    "grid.linewidth":    0.7,
-    "font.family":       "DejaVu Sans",
-    "font.size":         11,
-    "axes.titlesize":    13,
-    "axes.titleweight":  "bold",
-    "axes.titlepad":     12,
-    "legend.fontsize":   10,
-    "legend.framealpha": 0.95,
-    "legend.edgecolor":  "#CCCCCC",
-    "savefig.dpi":       300,
-    "savefig.bbox":      "tight",
-    "savefig.facecolor": "white",
+    "figure.facecolor":   "white",
+    "axes.facecolor":     "white",
+    "axes.edgecolor":     "black",
+    "axes.linewidth":     0.8,
+    "axes.spines.top":    False,
+    "axes.spines.right":  False,
+    "axes.grid":          True,
+    "axes.axisbelow":     True,
+    "grid.color":         "#DDDDDD",
+    "grid.linewidth":     0.6,
+    "grid.linestyle":     "--",
+    "font.family":        "DejaVu Sans",
+    "font.size":          9,
+    "axes.titlesize":     10,
+    "axes.titleweight":   "bold",
+    "axes.labelsize":     9,
+    "axes.titlepad":      8,
+    "xtick.labelsize":    8,
+    "ytick.labelsize":    8,
+    "legend.fontsize":    8,
+    "legend.framealpha":  1.0,
+    "legend.edgecolor":   "black",
+    "legend.fancybox":    False,
+    "savefig.dpi":        300,
+    "savefig.bbox":       "tight",
+    "savefig.facecolor":  "white",
 })
 
 
 # LOAD
+def _merge_histories(parts):
+    """Concatenate a list of history dicts in order (chronological)."""
+    keys = ["train_loss", "train_acc", "val_loss", "val_acc", "val_top5"]
+    merged = {k: [] for k in keys}
+    for p in parts:
+        for k in keys:
+            if k in p:
+                merged[k].extend(p[k])
+    return merged
+
 def load_history(name, checkpoint_dir=CHECKPOINT_DIR):
+    """
+    Dynamically finds ALL history files whose filename starts with `{name}`
+    (e.g. resnet50_tiered_curriculum_cifar100_history.pt and
+          resnet50_tiered_curriculum_cifar100_resumed_history.pt),
+    sorts them by file modification time (oldest first), and merges them
+    into one continuous run automatically.
+
+    Nothing needs to change in EXPERIMENTS when a run is resumed under a
+    new name — just make sure the new name starts with the same base.
+    """
+    from glob import glob as _glob
+
+    found = []
     for ext in [".pt", ".json"]:
-        path = os.path.join(checkpoint_dir, f"{name}_history{ext}")
-        if not os.path.exists(path):
-            continue
+        pattern = os.path.join(checkpoint_dir, f"{name}*_history{ext}")
+        found.extend(_glob(pattern))
+
+    found = sorted(set(found), key=os.path.getmtime)
+
+    if not found:
+        print(f" {name}  — not found")
+        return None
+
+    parts = []
+    for path in found:
+        ext = os.path.splitext(path)[1]
         if ext == ".pt" and HAVE_TORCH:
             h = torch.load(path, map_location="cpu")
         else:
-            with open(path) as f:
-                h = json.load(f)
-        print(f" {name:<48}  best={max(h['val_acc'])*100:.2f}%")
+            try:
+                with open(path) as f:
+                    h = json.load(f)
+            except Exception:
+                h = None
+        if h is not None:
+            parts.append((path, h))
+
+    if not parts:
+        return None
+
+    if len(parts) == 1:
+        path, h = parts[0]
+        print(f" {os.path.basename(path):<52}  best={max(h['val_acc'])*100:.2f}%")
         return h
-    print(f" {name}  — not found")
-    return None
+
+    ep_counts = " + ".join(str(len(h["val_acc"])) for _, h in parts)
+    merged = _merge_histories([h for _, h in parts])
+    print(f" {name}  — auto-merged {len(parts)} parts  "
+          f"({ep_counts} ep  ->  {len(merged['val_acc'])} total  "
+          f"best={max(merged['val_acc'])*100:.2f}%)")
+    for path, h in parts:
+        print(f"   [{len(h['val_acc']):>3} ep]  {os.path.basename(path)}")
+    return merged
 
 def best(h):
     arr = np.array(h["val_acc"])
@@ -84,67 +141,74 @@ def best(h):
 
 
 # ALL EXPERIMENTS REGISTRY
+#
+# load_history() automatically finds ALL files starting with the given base name
+# (e.g. base_history.pt  +  base_resumed_history.pt), sorts by modification time,
+# and merges them — no manual changes needed when a run is resumed under a new name.
+#
 EXPERIMENTS = [
-    # (display_label, checkpoint_name, color, group)
-    ("No Aug    | SGD | MultiStep",   "resnet18_no_aug_sgd_multistep_cifar10",    PALETTE["no_aug"], "baseline"),
-    ("Static    | SGD | MultiStep",   "resnet18_static_aug_sgd_multistep_cifar10", PALETTE["static"], "baseline"),
-    ("Static    | SGD | Cosine",      "resnet18_static_aug_sgd_cosine_cifar10",    PALETTE["cosine"], "ablation"),
-    ("Static    | Adam| MultiStep",   "resnet18_static_aug_adam_multistep_cifar10",PALETTE["adam"],   "ablation"),
-    ("CL (Loss) | SGD | MultiStep ★", "resnet18_cl_loss_sgd_multistep_cifar10",    PALETTE["cl"],     "cl"),
-    ("CL (Loss) | SGD | Cosine",      "resnet18_cl_loss_sgd_cosine_cifar10",       PALETTE["cosine"], "cl"),
+    # (display_label,                   checkpoint_base_name,                       color,             group)
+    # ── CIFAR-100 | ResNet-50 | FIT comparison ──────────────────────────────────────────────────────────────
+    ("No Augmentation (floor)",         "resnet50_no_aug_cifar100_v2_cifar100",      PALETTE["no_aug"], "floor"),
+    ("Static Aug (all ops, epoch 1)",   "resnet50_static_aug_cifar100_v2_cifar100",  PALETTE["static"], "baseline"),
+    ("Tiered CL (3-tier progressive)",  "resnet50_tiered_curriculum_cifar100",       PALETTE["cl"],     "cl"),
 ]
 
 
-# FIGURE — grouped bar chart comparison
+# FIGURE — research paper quality grouped bar chart
 def fig_comparison(rows, fname="fig_compare_methods.png"):
     valid  = [r for r in rows if r["h"] is not None]
-    labels = [r["label"] for r in valid]
     colors = [r["color"] for r in valid]
-    vals   = [r["val_b"]  for r in valid]
-    gaps   = [r["gap"]    for r in valid]
-    short  = [l.split("|")[0].strip() for l in labels]
+    labels = [r["label"] for r in valid]
+    vals   = [r["val_b"]   for r in valid]
+    tests  = [r["test_acc"] if r["test_acc"] else r["val_b"] for r in valid]
+    gaps   = [r["gap"]     for r in valid]
 
-    fig = plt.figure(figsize=(16, 6))
+    # Short x-tick labels
+    short = ["No Aug", "Static Aug", "Tiered CL"][:len(valid)]
+
+    x     = np.arange(len(valid))
+    width = 0.55
+
+    fig, axes = plt.subplots(1, 2, figsize=(7, 3.2))
     fig.suptitle(
-        "Method Comparison — CIFAR-10  ·  ResNet-18  ·  All Experiments",
-        fontsize=14, fontweight="bold", y=1.01,
+        "CIFAR-100  ·  ResNet-50  ·  100 epochs  ·  SGD",
+        fontsize=9, fontweight="bold",
     )
-    gs = gridspec.GridSpec(1, 2, figure=fig, wspace=0.30)
 
-    # Val Accuracy
-    ax0 = fig.add_subplot(gs[0])
-    bars = ax0.bar(range(len(valid)), vals, color=colors, alpha=0.85, edgecolor="white", lw=1.4, width=0.6)
-    ax0.set_xticks(range(len(valid)))
-    ax0.set_xticklabels(short, rotation=25, ha="right", fontsize=9)
-    ax0.set_ylabel("Accuracy (%)")
-    ax0.set_title("(a)  Best Validation Accuracy")
-    # Data-driven limits: enough headroom for bar labels
-    val_span    = max(max(vals) - min(vals), 2)
-    val_top     = min(100, max(vals) + val_span * 0.25)
-    ax0.set_ylim(max(0, min(vals) - val_span * 0.15), val_top)
-    ax0.yaxis.set_major_locator(MultipleLocator(max(1, round(val_span / 8))))
-    for bar, val in zip(bars, vals):
-        ylo, yhi = ax0.get_ylim()
-        label_y = bar.get_height() + (yhi - ylo) * 0.012
-        ax0.text(bar.get_x() + bar.get_width() / 2, label_y,
-                 f"{val:.2f}%", ha="center", va="bottom",
-                 fontsize=8.5, fontweight="bold", clip_on=False)
+    # ── (a) Test Top-1 Accuracy ──────────────────────────────────
+    ax = axes[0]
+    bars = ax.bar(x, tests, width=width, color=colors,
+                  edgecolor="black", linewidth=0.6, zorder=3)
+    ax.set_xticks(x)
+    ax.set_xticklabels(short)
+    ax.set_ylabel("Test Top-1 Accuracy (%)")
+    ax.set_title("(a)  Test Top-1 Accuracy")
+    ymin = max(0, min(tests) - 8)
+    ymax = min(100, max(tests) + 6)
+    ax.set_ylim(ymin, ymax)
+    ax.yaxis.set_major_locator(MultipleLocator(5))
+    for bar, val in zip(bars, tests):
+        ax.text(bar.get_x() + bar.get_width() / 2,
+                bar.get_height() + 0.5,
+                f"{val:.2f}%", ha="center", va="bottom",
+                fontsize=7.5, fontweight="bold")
 
-    # Generalization gap
-    ax1 = fig.add_subplot(gs[1])
-    bars2 = ax1.bar(range(len(valid)), gaps, color=colors, alpha=0.85, edgecolor="white", lw=1.4, width=0.6)
-    ax1.set_xticks(range(len(valid)))
-    ax1.set_xticklabels(short, rotation=25, ha="right", fontsize=9)
-    ax1.set_ylabel("Gap (%)")
-    ax1.set_title("(b)  Generalization Gap  (Train − Val  ↓ lower is better)")
-    gap_span = max(max(gaps) - min(gaps), 1)
-    ax1.set_ylim(0, max(gaps) + gap_span * 0.25)
+    # ── (b) Train − Val Generalization Gap ──────────────────────
+    ax = axes[1]
+    bars2 = ax.bar(x, gaps, width=width, color=colors,
+                   edgecolor="black", linewidth=0.6, zorder=3)
+    ax.set_xticks(x)
+    ax.set_xticklabels(short)
+    ax.set_ylabel("Train − Val Gap (pp)  ↓ lower is better")
+    ax.set_title("(b)  Generalization Gap")
+    ax.set_ylim(0, max(gaps) + 8)
+    ax.yaxis.set_major_locator(MultipleLocator(10))
     for bar, val in zip(bars2, gaps):
-        ylo, yhi = ax1.get_ylim()
-        label_y = bar.get_height() + (yhi - ylo) * 0.012
-        ax1.text(bar.get_x() + bar.get_width() / 2, label_y,
-                 f"{val:.1f}%", ha="center", va="bottom",
-                 fontsize=8.5, fontweight="bold", clip_on=False)
+        ax.text(bar.get_x() + bar.get_width() / 2,
+                bar.get_height() + 0.5,
+                f"{val:.1f}", ha="center", va="bottom",
+                fontsize=7.5, fontweight="bold")
 
     plt.tight_layout()
     path = os.path.join(FIGURES_DIR, fname)
@@ -158,10 +222,10 @@ def print_final_table(rows):
     W = 88
     print(f"\n{'═'*W}")
     print("  FINAL RESULTS TABLE — All Experiments")
-    print("  CIFAR-10  ·  ResNet-18  ·  SGD  ·  seed=42  ·  150 epochs")
+    print("  CIFAR-100  ·  ResNet-50  ·  SGD  ·  seed=42  ·  100 epochs")
     print(f"{'═'*W}\n")
 
-    groups = {"baseline": "BASELINES", "ablation": "ABLATIONS", "cl": "CURRICULUM LEARNING"}
+    groups = {"floor": "FLOOR (NO AUGMENTATION)", "baseline": "BASELINE", "cl": "CURRICULUM LEARNING (PROPOSED)"}
     current_group = None
 
     for r in rows:
@@ -193,25 +257,29 @@ def print_final_table(rows):
     print(f"{'═'*W}")
 
     # ── Improvement summary ──────────────────────────────────
-    bl = next((r for r in rows if "static" in r["label"].lower()
-               and "multistep" in r["label"].lower()
-               and "cl" not in r["label"].lower()
-               and r["h"] is not None), None)
-    cl = next((r for r in rows if "CL" in r["label"]
-               and "multistep" in r["label"].lower()
-               and r["h"] is not None), None)
+    no_aug = next((r for r in rows if r["group"] == "floor" and r["h"] is not None), None)
+    bl     = next((r for r in rows if r["group"] == "baseline" and r["h"] is not None), None)
+    cl     = next((r for r in rows if r["group"] == "cl" and r["h"] is not None), None)
 
     if bl and cl:
         dv  = cl["val_b"] - bl["val_b"]
         dg  = bl["gap"]   - cl["gap"]
         sv  = "+" if dv >= 0 else ""
         print("\n  THESIS CLAIM:")
-        print("  CL (Loss-Guided) vs Static Augmentation:")
+        print("  Tiered CL vs Static Augmentation:")
         print(f"    Δ Val Accuracy   : {sv}{dv:.2f}%")
         print(f"    Δ Generalization : reduced gap by {dg:.1f}pp")
         verdict = "✅ CL method improves over baseline" if dv > 0 else "❌ CL did not improve"
         print(f"    Verdict          : {verdict}")
-        print(f"{'═'*W}\n")
+
+    if no_aug and bl:
+        aug_gain = bl["val_b"] - no_aug["val_b"]
+        print(f"\n  Augmentation benefit (Static vs No Aug): +{aug_gain:.2f}%")
+    if no_aug and cl:
+        cl_gain = cl["val_b"] - no_aug["val_b"]
+        print(f"  Curriculum benefit (CL vs No Aug)      : +{cl_gain:.2f}%")
+
+    print(f"{'═'*W}\n")
 
 
 
@@ -233,7 +301,7 @@ def main(checkpoint_dir=CHECKPOINT_DIR):
             if HAVE_TORCH and os.path.exists(ckpt_path):
                 try:
                     ckpt = torch.load(ckpt_path, map_location="cpu")
-                    test_acc = ckpt.get("test_acc", None)
+                    test_acc = ckpt.get("test_top1", None)
                     if test_acc:
                         test_acc *= 100
                 except Exception:

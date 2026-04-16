@@ -58,6 +58,8 @@ def train_one_epoch_cl(
     mode: str      = "inverse",
     blend: float   = 0.7,
     warmup_epochs: int = 5,
+    aug_milestones: list = None,
+    max_difficulty: float = 1.0,
 ):
     """
     One training epoch with curriculum learning.
@@ -119,6 +121,8 @@ def train_one_epoch_cl(
             mode=mode,
             warmup_epochs=warmup_epochs,
             blend=blend,
+            aug_milestones=aug_milestones,
+            max_difficulty=max_difficulty,
         )
 
         all_indices.append(indices.cpu())
@@ -212,11 +216,30 @@ def run_training(
 
     best_val_acc = 0.0
     best_epoch   = 0
+    start_epoch  = 1
     start_time   = time.time()
     milestones   = cfg.get("milestones", [])
     effective_lr = cfg.get("effective_lr", cfg.get("lr", 0.1))
 
-    for epoch in range(1, epochs + 1):
+    # ── Resume from checkpoint
+    resume_path = cfg.get("resume")
+    if resume_path:
+        print(f"  Resuming from: {resume_path}")
+        ckpt = torch.load(resume_path, map_location="cpu", weights_only=False)
+        model.load_state_dict(ckpt["model_state_dict"])
+        optimizer.load_state_dict(ckpt["optimizer_state"])
+        if scheduler:
+            if "scheduler_state" in ckpt:
+                scheduler.load_state_dict(ckpt["scheduler_state"])
+            else:
+                scheduler.last_epoch = ckpt["epoch"]
+        history      = ckpt["history"]
+        best_val_acc = ckpt["val_acc"]
+        best_epoch   = ckpt["epoch"]
+        start_epoch  = ckpt["epoch"] + 1
+        print(f"  Resuming from epoch {start_epoch} | best val acc so far: {best_val_acc*100:.2f}%\n")
+
+    for epoch in range(start_epoch, epochs + 1):
 
         # ── Train ────────────────────────────────────────────
         if is_cl:
@@ -228,6 +251,8 @@ def run_training(
                 mode=cfg.get("cl_mode", "inverse"),
                 blend=cfg.get("cl_blend", 0.7),
                 warmup_epochs=cfg.get("warmup_epochs", 5),
+                aug_milestones=cfg.get("aug_milestones", None),
+                max_difficulty=cfg.get("max_difficulty", 1.0),
             )
         else:
             train_loss, train_acc = train_one_epoch(
@@ -273,6 +298,7 @@ def run_training(
                 "epoch":            epoch,
                 "model_state_dict": model.state_dict(),
                 "optimizer_state":  optimizer.state_dict(),
+                "scheduler_state":  scheduler.state_dict() if scheduler else None,
                 "val_acc":          val_acc,
                 "history":          history,
                 "cfg":              {**cfg, "effective_lr": effective_lr,"milestones": milestones},

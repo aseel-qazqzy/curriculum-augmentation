@@ -15,9 +15,9 @@ Available models:
 """
 
 import torch.nn as nn
-from torchvision import models
 import models.baseline_cnn      as custom_cnn
 import models.baseline_resnet18 as resnet18_mod
+import models.baseline_resnet50 as resnet50_mod
 import models.wideresnet        as wrn_mod
 import models.pyramidnet        as pyramid_mod
 
@@ -41,16 +41,14 @@ def get_model(name: str, num_classes: int = 10) -> nn.Module:
         return resnet18_mod.get_baseline_model(num_classes=num_classes)
 
     elif name == "resnet50":
-        model = models.resnet50(weights=None)
-        model.fc = nn.Linear(model.fc.in_features, num_classes)
-        return model
+        return resnet50_mod.get_baseline_model(num_classes=num_classes)
 
     # ── WideResNet (Zagoruyko & Komodakis, 2016) ──────────────
     # Used in Cubuk et al. (2020) RandAugment paper for CIFAR-10
-    elif name in ("wideresnet", "wrn28_10", "wrn-28-10"):
+    elif name in {"wideresnet", "wrn28_10", "wrn-28-10"}:
         return wrn_mod.get_wrn28_10(num_classes=num_classes)
 
-    elif name in ("wrn16_8", "wrn-16-8"):
+    elif name in {"wrn16_8", "wrn-16-8"}:
         return wrn_mod.get_wrn16_8(num_classes=num_classes)
 
     # ── PyramidNet (Han et al., 2017) ─────────────────────────
@@ -58,7 +56,7 @@ def get_model(name: str, num_classes: int = 10) -> nn.Module:
     elif name == "pyramidnet":
         return pyramid_mod.get_pyramidnet110(num_classes=num_classes)
 
-    elif name in ("pyramidnet272", "pyramidnet-272"):
+    elif name in {"pyramidnet272", "pyramidnet-272"}:
         return pyramid_mod.get_pyramidnet272(num_classes=num_classes)
 
     else:

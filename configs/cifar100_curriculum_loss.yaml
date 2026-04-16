@@ -1,0 +1,38 @@
+# ─────────────────────────────────────────────────────────────
+# Curriculum Learning: Loss-guided augmentation on CIFAR-100
+# Run: python experiments/train.py --config configs/cifar100_curriculum_loss.yaml
+# Or:  python experiments/train.py --dataset cifar100 --model resnet50
+# ─────────────────────────────────────────────────────────────
+
+experiment_name: cifar100_resnet50_curriculum_loss
+seed: 42
+use_wandb: true
+
+data:
+  dataset: cifar100
+  root: ./data/raw
+  batch_size: 128
+
+model:
+  name: resnet50
+  pretrained: false
+
+augmentation:
+  strategy: curriculum       # none | static | random | curriculum
+  mode: loss_guided          # class | instance | loss
+  schedule: multistep        # linear | cosine | step
+  warmup_epochs: 5
+  primitives:
+    - flip
+    - crop
+    - color_jitter
+    - rotation
+    - grayscale
+
+training:
+  epochs: 150
+  optimizer: sgd
+  lr: 0.1
+  weight_decay: 0.0005
+  scheduler: multistep
+  checkpoint_dir: ./checkpoints

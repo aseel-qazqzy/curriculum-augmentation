@@ -1,3 +1,8 @@
+# Documents
+*.pdf
+*.md
+!README.md
+
 # Model checkpoints
 checkpoints/
 *.pth
@@ -28,6 +33,15 @@ venv/
 
 # OS
 .DS_Store
-data/
-data/
 notebooks/data/
+data/cifar-10-python.tar.gz
+data/cifar-100-python.tar.gz
+data/cifar-10-python/
+data/cifar-100-python/
+data/cifar-*/train
+data/tiny-imagenet-200/
+augmentations/sota/
+
+# Results and checkpoints
+results/
+checkpoints/

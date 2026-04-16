@@ -5,27 +5,28 @@ Main entry point for Curriculum Learning experiments.
 This is your thesis contribution — loss-guided curriculum augmentation.
 
 Usage:
-    # CL on CIFAR-10
-    python experiments/train.py \
-      --dataset cifar10 \
-      --experiment_name resnet18_cl_loss_sgd_multistep_cifar10 \
-      --epochs 150 --lr 0.1 --optimizer sgd --scheduler multistep
+    # ResNet-18 on CIFAR-10  (default)
+    python experiments/train.py --dataset cifar10 --model resnet18
 
-    # CL on CIFAR-100
+    # ResNet-50 on CIFAR-100
+    python experiments/train.py --dataset cifar100 --model resnet50
+
+    # Any model on any dataset
+    python experiments/train.py --dataset cifar10  --model wideresnet
+    python experiments/train.py --dataset cifar100 --model pyramidnet
+
+    # Full run with explicit settings
     python experiments/train.py \
-      --dataset cifar100 \
-      --experiment_name resnet18_cl_loss_sgd_multistep_cifar100 \
-      --epochs 150 --lr 0.1 --optimizer sgd --scheduler multistep
+      --dataset cifar100 --model resnet50 \
+      --epochs 150 --lr 0.1 --optimizer sgd --scheduler multistep \
+      --experiment_name resnet50_cl_loss_cifar100
 
     # Ablation: different CL schedule
-    python experiments/train.py \
-      --dataset cifar10 \
-      --cl_schedule linear \
-      --experiment_name resnet18_cl_linear_sgd_multistep_cifar10
+    python experiments/train.py --dataset cifar10 --cl_schedule linear
 
-    # Debug
+    # Debug (2 epochs, tiny data)
     python experiments/train.py --debug
-"""
+""" 
 
 import os
 import sys
@@ -40,7 +41,7 @@ from torchvision import datasets
 
 sys.path.append(str(Path(__file__).resolve().parent.parent))
 
-import models.baseline_resnet18 as resnet
+from models.registry import get_model
 
 from experiments.utils import set_seed, get_device, build_optimizer, build_scheduler, setup_logging
 from experiments.config import BASE_CONFIG
@@ -75,18 +76,26 @@ DEFAULT_CONFIG = {
     **BASE_CONFIG,
 
     # CL-specific
-    "cl_schedule":     "sigmoid",   # sigmoid | linear | cosine | step
+    "cl_schedule":     "cosine",    # sigmoid | linear | cosine | step | milestone
     "cl_mode":         "inverse",   # inverse | direct | normalized
-    "cl_blend":        0.7,         # 0=pure sample-level, 1=pure epoch-level
-    "warmup_epochs":   5,           # epochs before CL starts
+    "cl_blend":        1.0,         # 0=pure sample-level, 1=pure epoch-level
+    "warmup_epochs":   10,          # epochs before CL starts
+    "max_difficulty":  0.70,        # cap difficulty here (solarize=0.80, posterize=0.85)
     "label_smoothing": 0.1,         # 0.0 = standard CE, 0.1 = smoothed
 
+    # Milestone schedule: list of (end_epoch, difficulty) pairs.
+    # Only used when cl_schedule="milestone".
+    #   difficulty 0.20 → easy   (flip, crop)
+    #   difficulty 0.45 → medium (+ color jitter, rotation, shear)
+    #   difficulty 1.0  → hard   (all — unlocked after last milestone epoch)
+    "aug_milestones":  None,        # e.g. [(20, 0.20), (60, 0.45)]
+
     "experiment_name": "resnet18_cl_loss_sgd_multistep",
+    "model":           "resnet18",
 }
 
 
 
-# MAIN
 def main(cfg: dict):
     # Always suffix experiment name with dataset so checkpoints/logs are unambiguous
     dataset = cfg["dataset"]
@@ -100,11 +109,17 @@ def main(cfg: dict):
     print(f"\n{'='*60}")
     print(f"  Experiment  : {cfg['experiment_name']}")
     print(f"  Dataset     : {cfg['dataset'].upper()}")
+    print(f"  Model       : {cfg['model']}")
     print(f"  Method      : Loss-Guided Curriculum Learning")
     print(f"  CL Schedule : {cfg['cl_schedule']}")
     print(f"  CL Mode     : {cfg['cl_mode']}")
     print(f"  CL Blend    : {cfg['cl_blend']} (epoch/sample mix)")
-    print(f"  Warmup      : {cfg['warmup_epochs']} epochs")
+    print(f"  Max Diff    : {cfg.get('max_difficulty', 1.0)}")
+    if cfg['cl_schedule'] == "milestone":
+        milestones = cfg.get("aug_milestones") or [(20, 0.20), (60, 0.45)]
+        print(f"  Milestones  : {milestones}  (beyond last → max_difficulty)")
+    else:
+        print(f"  Warmup      : {cfg['warmup_epochs']} epochs")
     print(f"  Epochs      : {cfg['epochs']}")
     print(f"  Batch Size  : {cfg['batch_size']}")
 
@@ -164,7 +179,7 @@ def main(cfg: dict):
           f"Test: {len(test_ds):,}")
 
     # ── Model ────────────────────────────────────────────────
-    model = resnet.get_baseline_model(num_classes=num_classes).to(device)
+    model = get_model(cfg["model"], num_classes=num_classes).to(device)
 
     # ── Loss function ────────────────────────────────────────
     smoothing = cfg.get("label_smoothing", 0.0)
@@ -206,11 +221,13 @@ def main(cfg: dict):
     return history, best_val, test_top1
 
 
-# CLI
 def parse_args():
     parser = argparse.ArgumentParser(description="Train CL experiment")
     parser.add_argument("--dataset",          type=str,   default=None,
                         choices=["cifar10", "cifar100"])
+    parser.add_argument("--model",            type=str,   default=None,
+                        choices=["resnet18", "resnet50", "wideresnet", "wrn16_8",
+                                 "pyramidnet", "pyramidnet272", "baseline_cnn"])
     parser.add_argument("--epochs",           type=int,   default=None)
     parser.add_argument("--lr",               type=float, default=None)
     parser.add_argument("--batch_size",       type=int,   default=None)
@@ -221,14 +238,25 @@ def parse_args():
     parser.add_argument("--experiment_name",  type=str,   default=None)
     parser.add_argument("--checkpoint_dir",   type=str,   default=None)
     parser.add_argument("--cl_schedule",      type=str,   default=None,
-                        choices=["sigmoid", "linear", "cosine", "step"])
+                        choices=["sigmoid", "linear", "cosine", "step", "milestone"])
     parser.add_argument("--cl_mode",          type=str,   default=None,
                         choices=["inverse", "direct", "normalized"])
     parser.add_argument("--cl_blend",         type=float, default=None)
     parser.add_argument("--warmup_epochs",    type=int,   default=None)
+    parser.add_argument("--max_difficulty",   type=float, default=None,
+                        help="Hard ceiling on augmentation difficulty (default 0.70). "
+                             "Solarize/posterize activate above 0.80/0.85 — keep below that.")
     parser.add_argument("--label_smoothing",  type=float, default=None)
+    parser.add_argument("--aug_milestone_epochs",       type=int,   nargs="+", default=None,
+                        metavar="EPOCH",
+                        help="Epoch boundaries for milestone schedule, e.g. --aug_milestone_epochs 20 60")
+    parser.add_argument("--aug_milestone_difficulties", type=float, nargs="+", default=None,
+                        metavar="DIFF",
+                        help="Difficulty at each milestone, e.g. --aug_milestone_difficulties 0.20 0.45")
     parser.add_argument("--use_wandb",        action="store_true")
     parser.add_argument("--debug",            action="store_true")
+    parser.add_argument("--resume",           type=str, default=None,
+                        help="Path to a _best.pth checkpoint to resume training from")
     return parser.parse_args()
 
 
@@ -236,13 +264,27 @@ if __name__ == "__main__":
     args = parse_args()
     cfg  = DEFAULT_CONFIG.copy()
 
-    for key in ["dataset", "epochs", "lr", "batch_size", "optimizer",
+    for key in ["dataset", "model", "epochs", "lr", "batch_size", "optimizer",
                 "scheduler", "experiment_name", "checkpoint_dir",
                 "cl_schedule", "cl_mode", "cl_blend", "warmup_epochs",
-                "label_smoothing"]:
+                "max_difficulty", "label_smoothing", "resume"]:
         val = getattr(args, key, None)
         if val is not None:
             cfg[key] = val
+
+    # Build aug_milestones from CLI epoch/difficulty lists
+    if args.aug_milestone_epochs is not None:
+        epochs_list = args.aug_milestone_epochs
+        diffs_list  = args.aug_milestone_difficulties or [0.20, 0.45][:len(epochs_list)]
+        if len(diffs_list) != len(epochs_list):
+            raise ValueError(
+                f"--aug_milestone_epochs ({len(epochs_list)} values) and "
+                f"--aug_milestone_difficulties ({len(diffs_list)} values) must have the same length."
+            )
+        cfg["aug_milestones"] = list(zip(epochs_list, diffs_list))
+        # Automatically switch to milestone schedule if not already set
+        if cfg.get("cl_schedule") != "milestone":
+            cfg["cl_schedule"] = "milestone"
 
     if args.use_wandb:
         cfg["use_wandb"] = True

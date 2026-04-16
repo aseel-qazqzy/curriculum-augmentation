@@ -84,23 +84,43 @@ def epoch_difficulty(
     total_epochs: int,
     schedule: str = "sigmoid",
     warmup_epochs: int = 5,
+    aug_milestones: list = None,
+    max_difficulty: float = 1.0,
 ) -> float:
     """
     Global difficulty level for the current epoch.
-    This is the EPOCH-LEVEL schedule (0.0 → 1.0 over training).
+    This is the EPOCH-LEVEL schedule (0.0 → max_difficulty over training).
 
     Combined with per-sample difficulty:
         final_difficulty = epoch_difficulty * sample_difficulty
 
     Args:
-        epoch:         current epoch (1-indexed)
-        total_epochs:  total training epochs
-        schedule:      "sigmoid" | "linear" | "cosine" | "step"
-        warmup_epochs: epochs before difficulty starts increasing
+        epoch:          current epoch (1-indexed)
+        total_epochs:   total training epochs
+        schedule:       "sigmoid" | "linear" | "cosine" | "step" | "milestone"
+        warmup_epochs:  epochs before difficulty starts increasing
+        aug_milestones: list of (end_epoch, difficulty) pairs for "milestone" schedule.
+                        e.g. [(20, 0.20), (60, 0.45)] means:
+                          epoch 1–20  → difficulty 0.20  (easy:  flip, crop)
+                          epoch 21–60 → difficulty 0.45  (medium: + color jitter, rotation, shear)
+                          epoch 61+   → difficulty 1.0   (hard:   all augmentations)
+        max_difficulty: hard ceiling on difficulty (default 1.0 = no cap).
+                        Set to e.g. 0.70 to prevent destructive augmentations
+                        (solarize/posterize activate above 0.80/0.85).
 
     Returns:
-        float in [0.0, 1.0]
+        float in [0.0, max_difficulty]
     """
+    if schedule == "milestone":
+        # Milestone schedule: difficulty jumps at fixed epoch boundaries.
+        # aug_milestones is a sorted list of (end_epoch, difficulty).
+        # After the last milestone, difficulty = max_difficulty.
+        milestones = aug_milestones or [(20, 0.20), (60, 0.45)]
+        for end_epoch, difficulty in sorted(milestones, key=lambda x: x[0]):
+            if epoch <= end_epoch:
+                return min(float(difficulty), max_difficulty)
+        return max_difficulty  # beyond last milestone → max difficulty
+
     if epoch <= warmup_epochs:
         return 0.0
 
@@ -112,24 +132,26 @@ def epoch_difficulty(
         # Slow start, fast middle, plateau at end
         # Centred at 50% of (post-warmup) training
         t = (progress - 0.5) / 0.15
-        return float(1.0 / (1.0 + np.exp(-t)))
+        result = float(1.0 / (1.0 + np.exp(-t)))
 
     elif schedule == "linear":
-        return float(progress)
+        result = float(progress)
 
     elif schedule == "cosine":
         # Cosine ramp from 0 to 1
-        return float(0.5 * (1 - np.cos(np.pi * progress)))
+        result = float(0.5 * (1 - np.cos(np.pi * progress)))
 
     elif schedule == "step":
         # Discrete steps at 33%, 66%, 83%
-        if progress < 0.33: return 0.0
-        if progress < 0.66: return 0.33
-        if progress < 0.83: return 0.66
-        return 1.0
+        if progress < 0.33:   result = 0.0
+        elif progress < 0.66: result = 0.33
+        elif progress < 0.83: result = 0.66
+        else:                 result = 1.0
 
     else:
         raise ValueError(f"Unknown schedule: {schedule}")
+
+    return min(result, max_difficulty)
 
 
 # COMBINED DIFFICULTY
@@ -142,6 +164,8 @@ def get_batch_difficulties(
     mode: str      = "inverse",
     warmup_epochs: int = 5,
     blend: float   = 0.7,
+    aug_milestones: list = None,
+    max_difficulty: float = 1.0,
 ) -> torch.Tensor:
     """
     Final per-sample difficulty combining epoch schedule + loss signal.
@@ -152,19 +176,23 @@ def get_batch_difficulties(
         loss_per_sample: (B,) per-sample CE losses
         epoch:           current epoch
         total_epochs:    total epochs
-        schedule:        epoch-level schedule type
+        schedule:        epoch-level schedule type ("milestone" for fixed stages)
         mode:            how loss maps to difficulty
-        warmup_epochs:   warmup before CL starts
+        warmup_epochs:   warmup before CL starts (ignored for "milestone")
         blend:           weight of epoch-level vs sample-level
                          0.0 = pure sample-level (fully adaptive)
                          1.0 = pure epoch-level (ignores loss)
                          0.7 = recommended (epoch guides, loss fine-tunes)
+        aug_milestones:  list of (end_epoch, difficulty) for "milestone" schedule
+        max_difficulty:  hard ceiling on difficulty (see epoch_difficulty)
 
     Returns:
         difficulties: (B,) tensor of per-sample difficulties in [0, 1]
     """
     # Epoch-level: same for all samples in batch
-    ep_diff = epoch_difficulty(epoch, total_epochs, schedule, warmup_epochs)
+    ep_diff = epoch_difficulty(epoch, total_epochs, schedule, warmup_epochs,
+                               aug_milestones=aug_milestones,
+                               max_difficulty=max_difficulty)
     ep_diff_tensor = torch.full_like(loss_per_sample, ep_diff)
 
     # Sample-level: per-sample based on loss

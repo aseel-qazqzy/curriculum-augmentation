@@ -29,11 +29,20 @@ def step_schedule(epoch: int, total: int, warmup: int = 5) -> float:
     return epoch_difficulty(epoch, total, schedule="step", warmup_epochs=warmup)
 
 
+def milestone_schedule(epoch: int, total: int, warmup: int = 0,
+                       aug_milestones: list = None) -> float:
+    """Fixed difficulty stages at explicit epoch boundaries.
+    Default: easy (0.20) → medium (0.45) at epoch 20/60 → hard (1.0) after."""
+    return epoch_difficulty(epoch, total, schedule="milestone",
+                            warmup_epochs=0, aug_milestones=aug_milestones)
+
+
 SCHEDULE_REGISTRY = {
-    "sigmoid": sigmoid_schedule,
-    "linear":  linear_schedule,
-    "cosine":  cosine_schedule,
-    "step":    step_schedule,
+    "sigmoid":   sigmoid_schedule,
+    "linear":    linear_schedule,
+    "cosine":    cosine_schedule,
+    "step":      step_schedule,
+    "milestone": milestone_schedule,
 }
 
 
