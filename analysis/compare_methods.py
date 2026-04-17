@@ -269,7 +269,7 @@ def print_final_table(rows):
         print("  Tiered CL vs Static Augmentation:")
         print(f"    Δ Val Accuracy   : {sv}{dv:.2f}%")
         print(f"    Δ Generalization : reduced gap by {dg:.1f}pp")
-        verdict = "✅ CL method improves over baseline" if dv > 0 else "❌ CL did not improve"
+        verdict = "CL method improves over baseline" if dv > 0 else "CL did not improve"
         print(f"    Verdict          : {verdict}")
 
     if no_aug and bl:

@@ -84,6 +84,6 @@ if __name__ == "__main__":
     model = get_baseline_model()
     dummy = torch.zeros(4, 3, 32, 32)
     out   = model(dummy)
-    print(f"✅ Output shape: {out.shape}")  # should be (4, 10)
+    print(f"Output shape: {out.shape}")
     total_params = sum(p.numel() for p in model.parameters())
-    print(f"✅ Total parameters: {total_params:,}")
+    print(f"Total parameters: {total_params:,}")

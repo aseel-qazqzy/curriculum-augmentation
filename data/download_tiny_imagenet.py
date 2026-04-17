@@ -1,5 +1,4 @@
 """
-data/download_tiny_imagenet.py
 Download and prepare the Tiny-ImageNet-200 dataset.
 
 Run once before training:
@@ -9,7 +8,6 @@ What this does:
   1. Downloads tiny-imagenet-200.zip (~236 MB)
   2. Extracts it to data/tiny-imagenet-200/
   3. Reorganizes the flat val/ directory into class subfolders
-     so that torchvision.datasets.ImageFolder can read it
 
 Final structure:
     data/tiny-imagenet-200/
@@ -47,7 +45,7 @@ def download(data_root="data"):
         print(f"  Already extracted at {out_dir}")
     else:
         if not zip_path.exists():
-            print(f"  Downloading Tiny-ImageNet (~236 MB) ...")
+            print(f"  Downloading Tiny-ImageNet ...")
             urllib.request.urlretrieve(URL, zip_path, _progress)
             print()
         else:
@@ -58,7 +56,6 @@ def download(data_root="data"):
             z.extractall(root)
         print("  Extraction complete.")
 
-    # Reorganize val/
     _reorganize_val(out_dir / "val")
 
     n_train = sum(1 for _ in (out_dir / "train").rglob("*.JPEG"))
@@ -68,14 +65,7 @@ def download(data_root="data"):
 
 
 def _reorganize_val(val_dir: Path):
-    """
-    Downloaded val/ is flat:
-        val/images/val_0.JPEG
-        val/val_annotations.txt
-
-    Reorganize into class subfolders for ImageFolder:
-        val/n01443537/val_0.JPEG
-    """
+  
     ann_file = val_dir / "val_annotations.txt"
     img_dir  = val_dir / "images"
 
@@ -99,10 +89,3 @@ def _reorganize_val(val_dir: Path):
     ann_file.unlink()
     print("  val/ reorganized.")
 
-
-if __name__ == "__main__":
-    import argparse
-    parser = argparse.ArgumentParser()
-    parser.add_argument("--data_root", default="data")
-    args = parser.parse_args()
-    download(args.data_root)

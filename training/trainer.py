@@ -1,14 +1,4 @@
-"""
-training/trainer.py
-Reusable training loop for curriculum learning experiments.
-
-Handles the full epoch loop including:
-  - Per-sample loss collection for difficulty scoring
-  - LossTracker updates
-  - CurriculumDataset difficulty updates
-  - Checkpoint saving
-  - History tracking
-"""
+"""training/trainer.py — training loop for curriculum learning experiments."""
 
 import os
 import time
@@ -25,9 +15,7 @@ from training.losses import (
 from augmentations.curriculum import CurriculumDataset
 
 
-# TRAIN ONE EPOCH — standard (baseline, no curriculum)
 def train_one_epoch(model, loader, optimizer, criterion, device):
-    """Standard training epoch — used by run_training when cl_dataset is None."""
     model.train()
     total_loss, correct, total = 0.0, 0, 0
     for images, labels in loader:
@@ -43,7 +31,6 @@ def train_one_epoch(model, loader, optimizer, criterion, device):
     return total_loss / total, correct / total
 
 
-# TRAIN ONE EPOCH — with curriculum difficulty updates
 def train_one_epoch_cl(
     model,
     loader,
@@ -61,35 +48,11 @@ def train_one_epoch_cl(
     aug_milestones: list = None,
     max_difficulty: float = 1.0,
 ):
-    """
-    One training epoch with curriculum learning.
-
-    Steps per batch:
-        1. Forward pass — get per-sample losses
-        2. Update LossTracker with new losses
-        3. Backward pass — update weights
-        4. Update CurriculumDataset difficulties for next epoch
-
-    Args:
-        model, loader, optimizer, criterion, device: standard
-        epoch:         current epoch (1-indexed)
-        total_epochs:  total training epochs
-        cl_dataset:    CurriculumDataset to update difficulties on
-        loss_tracker:  LossTracker for EMA smoothing
-        schedule:      epoch-level difficulty schedule
-        mode:          loss → difficulty mapping
-        blend:         epoch vs sample difficulty blend
-        warmup_epochs: epochs before CL starts
-
-    Returns:
-        train_loss, train_acc, mean_difficulty
-    """
     model.train()
     total_loss, correct, total = 0.0, 0, 0
-    all_indices     = []
+    all_indices      = []
     all_difficulties = []
 
-    # Per-sample criterion for difficulty scoring
     criterion_per_sample = nn.CrossEntropyLoss(reduction="none")
 
     for images, labels, indices in loader:
@@ -100,19 +63,15 @@ def train_one_epoch_cl(
         optimizer.zero_grad()
         outputs = model(images)
 
-        # Main loss (for backprop — may use label smoothing)
         loss = criterion(outputs, labels)
         loss.backward()
         optimizer.step()
 
-        # Per-sample loss (for difficulty scoring — always CE)
         with torch.no_grad():
             per_sample_loss = criterion_per_sample(outputs, labels)
 
-        # Update loss tracker
         loss_tracker.update(indices, per_sample_loss)
 
-        # Compute new difficulties for these samples
         difficulties = get_batch_difficulties(
             per_sample_loss,
             epoch=epoch,
@@ -132,7 +91,6 @@ def train_one_epoch_cl(
         correct    += outputs.argmax(1).eq(labels).sum().item()
         total      += labels.size(0)
 
-    # Update dataset difficulties for NEXT epoch
     if all_indices:
         idx_tensor  = torch.cat(all_indices)
         diff_tensor = torch.cat(all_difficulties)
@@ -144,13 +102,8 @@ def train_one_epoch_cl(
     return total_loss / total, correct / total, mean_diff
 
 
-# EVALUATE
 @torch.no_grad()
 def evaluate(model, loader, criterion, device):
-    """
-    Evaluate model — returns loss, top1, top5.
-    Works with standard DataLoader (no index return needed).
-    """
     model.eval()
     total_loss, correct1, correct5, total = 0.0, 0, 0, 0
 
@@ -174,7 +127,7 @@ def evaluate(model, loader, criterion, device):
 
     return total_loss / total, correct1 / total, correct5 / total
 
-# FULL TRAINING RUN
+
 def run_training(
     model,
     train_loader,
@@ -188,15 +141,7 @@ def run_training(
     cl_dataset: CurriculumDataset = None,
     loss_tracker: LossTracker     = None,
 ):
-    """
-    Full training loop — works for both baseline and CL experiments.
-
-    If cl_dataset and loss_tracker are provided → CL mode.
-    Otherwise → standard training mode.
-
-    Returns:
-        history, best_val_acc, test_top1, test_top5
-    """
+    """Full training loop. Curriculum mode if cl_dataset and loss_tracker are provided."""
     is_cl      = cl_dataset is not None and loss_tracker is not None
     epochs     = cfg["epochs"]
     log_every  = cfg.get("log_every", 10)
@@ -211,7 +156,7 @@ def run_training(
         "train_loss": [], "train_acc": [],
         "val_loss":   [], "val_acc":   [],
         "val_top5":   [],
-        "difficulty": [],   # mean difficulty per epoch (CL only)
+        "difficulty": [],
     }
 
     best_val_acc = 0.0
@@ -221,7 +166,6 @@ def run_training(
     milestones   = cfg.get("milestones", [])
     effective_lr = cfg.get("effective_lr", cfg.get("lr", 0.1))
 
-    # ── Resume from checkpoint
     resume_path = cfg.get("resume")
     if resume_path:
         print(f"  Resuming from: {resume_path}")
@@ -241,7 +185,6 @@ def run_training(
 
     for epoch in range(start_epoch, epochs + 1):
 
-        # ── Train ────────────────────────────────────────────
         if is_cl:
             train_loss, train_acc, mean_diff = train_one_epoch_cl(
                 model, train_loader, optimizer, criterion, device,
@@ -260,15 +203,11 @@ def run_training(
             )
             mean_diff = 0.0
 
-        # ── Validate
-        val_loss, val_acc, val_top5 = evaluate(
-            model, val_loader, criterion, device
-        )
+        val_loss, val_acc, val_top5 = evaluate(model, val_loader, criterion, device)
 
         if scheduler:
             scheduler.step()
 
-        # ── History 
         history["train_loss"].append(train_loss)
         history["train_acc"].append(train_acc)
         history["val_loss"].append(val_loss)
@@ -277,7 +216,6 @@ def run_training(
         history["difficulty"].append(mean_diff)
         torch.save(history, history_path)
 
-        # ── Log
         if epoch % log_every == 0 or epoch == 1 or cfg.get("debug"):
             elapsed    = time.time() - start_time
             current_lr = optimizer.param_groups[0]["lr"]
@@ -290,7 +228,6 @@ def run_training(
                 f"LR: {current_lr:.5f}{diff_str} | Time: {elapsed:.0f}s"
             )
 
-        # ── Save best 
         if val_acc > best_val_acc:
             best_val_acc = val_acc
             best_epoch   = epoch
@@ -301,17 +238,13 @@ def run_training(
                 "scheduler_state":  scheduler.state_dict() if scheduler else None,
                 "val_acc":          val_acc,
                 "history":          history,
-                "cfg":              {**cfg, "effective_lr": effective_lr,"milestones": milestones},
+                "cfg":              {**cfg, "effective_lr": effective_lr, "milestones": milestones},
             }, ckpt_path)
-            print(f"  ✅ Best saved (epoch={epoch}, val_acc={val_acc*100:.2f}%)")
+            print(f"  Best saved (epoch={epoch}, val_acc={val_acc*100:.2f}%)")
 
-    # ── Final test evaluation 
-    test_loss, test_top1, test_top5 = evaluate(
-        model, test_loader, criterion, device
-    )
+    test_loss, test_top1, test_top5 = evaluate(model, test_loader, criterion, device)
     total_time = time.time() - start_time
 
-    # Re-save checkpoint with test results
     ckpt = torch.load(ckpt_path, map_location="cpu")
     ckpt["test_top1"]     = test_top1
     ckpt["test_top5"]     = test_top5

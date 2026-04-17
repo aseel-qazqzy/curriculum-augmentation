@@ -1,7 +1,3 @@
-"""
-data/datasets.py
-Data loading for CIFAR-10, CIFAR-100, and Tiny-ImageNet-200.
-"""
 
 import os
 import shutil
@@ -9,7 +5,6 @@ import torch
 from torch.utils.data import DataLoader
 from torchvision import datasets, transforms
 
-# NORMALIZATION STATS — single source of truth, import from here everywhere
 CIFAR10_MEAN        = (0.4914, 0.4822, 0.4465)
 CIFAR10_STD         = (0.2470, 0.2435, 0.2616)
 CIFAR100_MEAN       = (0.5071, 0.4867, 0.4408)
@@ -24,7 +19,7 @@ CIFAR_STATS = {
 }
 
 
-# TRANSFORMS — delegate to policy classes (single source of truth)
+# TRANSFORMS 
 def get_static_transforms(dataset: str = "cifar10"):
     """Standard static augmentation — your main baseline."""
     from augmentations.policies import StaticAugmentation
@@ -65,12 +60,11 @@ def get_cifar10_loaders(
         train_transform, test_transform = get_static_transforms("cifar10")
 
     # Download datasets
-    # Two views of the same training data: augmented for train, clean for val
     full_train_dataset = datasets.CIFAR10(root, train=True,  download=True, transform=train_transform)
     full_val_dataset   = datasets.CIFAR10(root, train=True,  download=True, transform=test_transform)
     test_dataset       = datasets.CIFAR10(root, train=False, download=True, transform=test_transform)
 
-    # Train / val split — same indices applied to both views
+    # Train / val split 
     val_size   = int(len(full_train_dataset) * val_split)
     if val_size < 1:
         raise ValueError(f"val_split={val_split} produces an empty validation set.")
@@ -80,7 +74,7 @@ def get_cifar10_loaders(
     train_dataset = torch.utils.data.Subset(full_train_dataset, indices[:train_size])
     val_dataset   = torch.utils.data.Subset(full_val_dataset,   indices[train_size:])
 
-    # Debug mode: tiny subsets
+    # Debug modes
     if debug:
         train_dataset = torch.utils.data.Subset(train_dataset, range(512))
         val_dataset   = torch.utils.data.Subset(val_dataset,   range(128))
@@ -104,23 +98,12 @@ def get_cifar100_loaders(
     num_workers:   int   = 0,
     debug:         bool  = False,
 ):
-    """
-    Returns train, validation, and test DataLoaders for CIFAR-100.
 
-    Args:
-        root:             Where to download/store data
-        batch_size:       Batch size for all loaders
-        val_split:        Fraction of training data used for validation (default 10%)
-        train_transform:  Transform applied to training set
-        test_transform:   Transform applied to val/test sets
-        num_workers:      Number of DataLoader workers
-        debug:            If True, use tiny subset for fast testing
-    """
     if train_transform is None or test_transform is None:
         train_transform, test_transform = get_static_transforms("cifar100")
 
     # Download datasets
-    # Two views of the same training data: augmented for train, clean for val
+
     full_train_dataset = datasets.CIFAR100(root, train=True,  download=True, transform=train_transform)
     full_val_dataset   = datasets.CIFAR100(root, train=True,  download=True, transform=test_transform)
     test_dataset       = datasets.CIFAR100(root, train=False, download=True, transform=test_transform)
@@ -134,7 +117,7 @@ def get_cifar100_loaders(
     train_dataset = torch.utils.data.Subset(full_train_dataset, indices[:train_size])
     val_dataset   = torch.utils.data.Subset(full_val_dataset,   indices[train_size:])
 
-    # Debug mode: tiny subsets
+    # Debug mode
     if debug:
         train_dataset = torch.utils.data.Subset(train_dataset, range(512))
         val_dataset   = torch.utils.data.Subset(val_dataset,   range(128))
@@ -150,21 +133,13 @@ def get_cifar100_loaders(
     return train_loader, val_loader, test_loader
 
 def _reorganize_tiny_imagenet_val(val_dir):
-    """
-    Tiny-ImageNet val/ is downloaded flat:
-        val/images/val_0.JPEG
-        val/val_annotations.txt
-    Reorganize into class subfolders so ImageFolder works:
-        val/n01443537/val_0.JPEG
-    Called automatically on first use.
-    """
     ann_file = os.path.join(val_dir, "val_annotations.txt")
     img_dir  = os.path.join(val_dir, "images")
 
     if not os.path.exists(ann_file):
         return  # already reorganized
 
-    print("  Reorganizing Tiny-ImageNet val/ into class subfolders ...")
+    print("  Tiny-ImageNet val/ into class subfolders ...")
     with open(ann_file) as f:
         for line in f:
             parts = line.strip().split("\t")
@@ -190,18 +165,7 @@ def get_tiny_imagenet_loaders(
     num_workers:     int   = 0,
     debug:           bool  = False,
 ):
-    """
-    Returns train, validation, and test DataLoaders for Tiny-ImageNet-200.
-    All three splits contain different images:
-
-        train/ (100k) → split by val_split into:
-            train_ds : 90k images  — augmented, used for gradient updates
-            val_ds   : 10k images  — clean, monitored each epoch for best checkpoint
-        val/   (10k)  → test_ds   — clean, evaluated once after training ends
-
-    Expects the dataset at {root}/tiny-imagenet-200/.
-    Download first with:  python data/download_tiny_imagenet.py
-    """
+  
     base      = os.path.join(root, "tiny-imagenet-200")
     train_dir = os.path.join(base, "train")
     val_dir   = os.path.join(base, "val")
@@ -227,7 +191,6 @@ def get_tiny_imagenet_loaders(
             _norm,
         ])
 
-    # Two views of train/ — augmented for training, clean for validation
     full_train = datasets.ImageFolder(train_dir, transform=train_transform)
     full_val   = datasets.ImageFolder(train_dir, transform=test_transform)
     # Official val/ — completely separate images, used only for final test

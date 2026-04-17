@@ -1,32 +1,13 @@
 """
 experiments/train.py
-Main entry point for Curriculum Learning experiments.
-
-This is your thesis contribution — loss-guided curriculum augmentation.
+Loss-guided curriculum augmentation training.
 
 Usage:
-    # ResNet-18 on CIFAR-10  (default)
     python experiments/train.py --dataset cifar10 --model resnet18
-
-    # ResNet-50 on CIFAR-100
     python experiments/train.py --dataset cifar100 --model resnet50
-
-    # Any model on any dataset
-    python experiments/train.py --dataset cifar10  --model wideresnet
-    python experiments/train.py --dataset cifar100 --model pyramidnet
-
-    # Full run with explicit settings
-    python experiments/train.py \
-      --dataset cifar100 --model resnet50 \
-      --epochs 150 --lr 0.1 --optimizer sgd --scheduler multistep \
-      --experiment_name resnet50_cl_loss_cifar100
-
-    # Ablation: different CL schedule
     python experiments/train.py --dataset cifar10 --cl_schedule linear
-
-    # Debug (2 epochs, tiny data)
     python experiments/train.py --debug
-""" 
+"""
 
 import os
 import sys
@@ -52,10 +33,8 @@ from training.trainer import run_training, evaluate
 
 
 class ValDataset(torch.utils.data.Dataset):
-    """
-    Wraps a base dataset with a standard (non-curriculum) transform.
-    Defined at module level so DataLoader workers can pickle it.
-    """
+    """Wraps a base dataset with a fixed transform (no curriculum). Module-level for pickle."""
+
     def __init__(self, base, transform):
         self.base      = base
         self.transform = transform
@@ -70,34 +49,21 @@ class ValDataset(torch.utils.data.Dataset):
         return img, label
 
 
-
-# DEFAULT CONFIG — extends shared BASE_CONFIG with CL-specific keys
 DEFAULT_CONFIG = {
     **BASE_CONFIG,
-
-    # CL-specific
-    "cl_schedule":     "cosine",    # sigmoid | linear | cosine | step | milestone
-    "cl_mode":         "inverse",   # inverse | direct | normalized
-    "cl_blend":        1.0,         # 0=pure sample-level, 1=pure epoch-level
-    "warmup_epochs":   10,          # epochs before CL starts
-    "max_difficulty":  0.70,        # cap difficulty here (solarize=0.80, posterize=0.85)
-    "label_smoothing": 0.1,         # 0.0 = standard CE, 0.1 = smoothed
-
-    # Milestone schedule: list of (end_epoch, difficulty) pairs.
-    # Only used when cl_schedule="milestone".
-    #   difficulty 0.20 → easy   (flip, crop)
-    #   difficulty 0.45 → medium (+ color jitter, rotation, shear)
-    #   difficulty 1.0  → hard   (all — unlocked after last milestone epoch)
-    "aug_milestones":  None,        # e.g. [(20, 0.20), (60, 0.45)]
-
+    "cl_schedule":     "cosine",
+    "cl_mode":         "inverse",
+    "cl_blend":        1.0,
+    "warmup_epochs":   10,
+    "max_difficulty":  0.70,
+    "label_smoothing": 0.1,
+    "aug_milestones":  None,
     "experiment_name": "resnet18_cl_loss_sgd_multistep",
     "model":           "resnet18",
 }
 
 
-
 def main(cfg: dict):
-    # Always suffix experiment name with dataset so checkpoints/logs are unambiguous
     dataset = cfg["dataset"]
     if not cfg["experiment_name"].endswith(f"_{dataset}"):
         cfg["experiment_name"] = f"{cfg['experiment_name']}_{dataset}"
@@ -123,13 +89,11 @@ def main(cfg: dict):
     print(f"  Epochs      : {cfg['epochs']}")
     print(f"  Batch Size  : {cfg['batch_size']}")
 
-    # ── W&B ──────────────────────────────────────────────────
     if cfg.get("use_wandb"):
         import wandb
         wandb.init(project="curriculum-augmentation",
                    name=cfg["experiment_name"], config=cfg)
 
-    # ── Data — build CurriculumDataset ───────────────────────
     dataset_name = cfg["dataset"]
     num_classes  = 100 if dataset_name == "cifar100" else 10
 
@@ -145,7 +109,6 @@ def main(cfg: dict):
     full_train = DS(cfg["data_root"], train=True,  download=True, transform=None)
     test_ds    = DS(cfg["data_root"], train=False, download=True, transform=val_transform)
 
-    # Train / val split
     val_size   = int(len(full_train) * cfg["val_split"])
     train_size = len(full_train) - val_size
     train_base, val_base = torch.utils.data.random_split(
@@ -153,14 +116,11 @@ def main(cfg: dict):
         generator=torch.Generator().manual_seed(cfg["seed"])
     )
 
-    # Debug: shrink the raw base datasets BEFORE wrapping with CurriculumDataset
-    # This keeps CurriculumDataset intact so .difficulties and .set_difficulties() work
     if cfg.get("debug"):
         train_base = torch.utils.data.Subset(train_base, range(512))
         val_base   = torch.utils.data.Subset(val_base,   range(128))
         test_ds    = torch.utils.data.Subset(test_ds,    range(128))
 
-    # Wrap training set with CurriculumDataset
     cl_transform = CurriculumTransform(dataset=dataset_name)
     cl_dataset   = CurriculumDataset(train_base, cl_transform, default_difficulty=0.0)
     loss_tracker = LossTracker(n_samples=len(train_base), momentum=0.9)
@@ -178,10 +138,8 @@ def main(cfg: dict):
     print(f"\n  Train: {len(cl_dataset):,} | Val: {len(val_dataset):,} | "
           f"Test: {len(test_ds):,}")
 
-    # ── Model ────────────────────────────────────────────────
     model = get_model(cfg["model"], num_classes=num_classes).to(device)
 
-    # ── Loss function ────────────────────────────────────────
     smoothing = cfg.get("label_smoothing", 0.0)
     if smoothing > 0:
         criterion = LabelSmoothingLoss(num_classes=num_classes,
@@ -191,14 +149,12 @@ def main(cfg: dict):
         criterion = nn.CrossEntropyLoss()
         print(f"  Loss        : CrossEntropy")
 
-    # ── Optimizer & Scheduler ────────────────────────────────
     optimizer, effective_lr = build_optimizer(model, cfg)
     scheduler, milestones   = build_scheduler(optimizer, cfg)
     cfg["effective_lr"]     = effective_lr
     cfg["milestones"]       = milestones
     print(f"{'='*60}\n")
 
-    # ── Run training ─────────────────────────────────────────
     history, best_val, test_top1, test_top5 = run_training(
         model=model,
         train_loader=train_loader,
@@ -243,20 +199,15 @@ def parse_args():
                         choices=["inverse", "direct", "normalized"])
     parser.add_argument("--cl_blend",         type=float, default=None)
     parser.add_argument("--warmup_epochs",    type=int,   default=None)
-    parser.add_argument("--max_difficulty",   type=float, default=None,
-                        help="Hard ceiling on augmentation difficulty (default 0.70). "
-                             "Solarize/posterize activate above 0.80/0.85 — keep below that.")
+    parser.add_argument("--max_difficulty",   type=float, default=None)
     parser.add_argument("--label_smoothing",  type=float, default=None)
     parser.add_argument("--aug_milestone_epochs",       type=int,   nargs="+", default=None,
-                        metavar="EPOCH",
-                        help="Epoch boundaries for milestone schedule, e.g. --aug_milestone_epochs 20 60")
+                        metavar="EPOCH")
     parser.add_argument("--aug_milestone_difficulties", type=float, nargs="+", default=None,
-                        metavar="DIFF",
-                        help="Difficulty at each milestone, e.g. --aug_milestone_difficulties 0.20 0.45")
+                        metavar="DIFF")
     parser.add_argument("--use_wandb",        action="store_true")
     parser.add_argument("--debug",            action="store_true")
-    parser.add_argument("--resume",           type=str, default=None,
-                        help="Path to a _best.pth checkpoint to resume training from")
+    parser.add_argument("--resume",           type=str, default=None)
     return parser.parse_args()
 
 
@@ -272,7 +223,6 @@ if __name__ == "__main__":
         if val is not None:
             cfg[key] = val
 
-    # Build aug_milestones from CLI epoch/difficulty lists
     if args.aug_milestone_epochs is not None:
         epochs_list = args.aug_milestone_epochs
         diffs_list  = args.aug_milestone_difficulties or [0.20, 0.45][:len(epochs_list)]
@@ -282,7 +232,6 @@ if __name__ == "__main__":
                 f"--aug_milestone_difficulties ({len(diffs_list)} values) must have the same length."
             )
         cfg["aug_milestones"] = list(zip(epochs_list, diffs_list))
-        # Automatically switch to milestone schedule if not already set
         if cfg.get("cl_schedule") != "milestone":
             cfg["cl_schedule"] = "milestone"
 

@@ -137,7 +137,7 @@ def load_model(checkpoint_path: str, num_classes: int, device):
     model = model.to(device)
     model.eval()
 
-    console.print(f"[green]✅ Loaded checkpoint: {checkpoint_path}[/green]")
+    console.print(f"Loaded checkpoint: {checkpoint_path}")
     console.print(f"   Trained for {ckpt.get('epoch', '?')} epochs | "
                   f"Best val acc: {ckpt.get('val_acc', 0)*100:.2f}%")
     return model, cfg

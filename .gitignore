@@ -2,6 +2,8 @@
 *.pdf
 *.md
 !README.md
+PROJECT_EXPLANATION.md
+THESIS_PROPOSAL.md
 
 # Model checkpoints
 checkpoints/
@@ -40,8 +42,10 @@ data/cifar-10-python/
 data/cifar-100-python/
 data/cifar-*/train
 data/tiny-imagenet-200/
+data/tiny-imagenet-200.zip
 augmentations/sota/
 
 # Results and checkpoints
 results/
 checkpoints/
+*.log

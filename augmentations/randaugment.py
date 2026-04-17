@@ -378,4 +378,4 @@ if __name__ == "__main__":
         bar = "█" * (c // 10)
         print(f"    {name:<16} {c:>4}  {bar}")
 
-    print("\n✅ RandAugment working correctly")
+    print("\nDone.")
