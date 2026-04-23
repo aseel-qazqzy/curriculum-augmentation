@@ -12,17 +12,27 @@ from data.datasets import CIFAR_STATS as STATS
 
 FIXED_STRENGTH = 0.7
 
-# blur excluded: deterministic blur on 32x32 images every epoch creates a
-# training/val distribution shift that harms all methods equally.
 _TIER_OPS = {
-    1: ["flip", "crop"],
-    2: ["flip", "crop", "color_jitter", "rotation", "shear"],
-    3: ["flip", "crop", "color_jitter", "rotation", "shear", "grayscale", "cutout"],
+    1: ["flip", "crop", "translate_x", "translate_y"],
+    2: ["flip", "crop", "translate_x", "translate_y",
+        "color_jitter", "rotation", "shear", "auto_contrast", "equalize", "sharpness"],
+    3: ["flip", "crop", "translate_x", "translate_y",
+        "color_jitter", "rotation", "shear", "auto_contrast", "equalize", "sharpness",
+        "grayscale", "cutout", "contrast", "brightness"],
 }
+
+# How many ops are randomly sampled per tier (subsampling adds within-tier diversity).
+_TIER_N_OPS = {1: 3, 2: 5, 3: 7}
+
+# Strength as a fraction of the ceiling (self.strength).
+# Tier 3 always equals the ceiling; lower tiers scale down proportionally.
+_TIER_STRENGTH_FRACS = {1: 0.40, 2: 0.70, 3: 1.0}
+
+_STRENGTH_RAMP_EPOCHS = 5   # epochs to linearly ramp strength at each tier boundary
 
 
 class AugmentationPolicy:
-    def __init__(self, dataset: str = "cifar10"):
+    def __init__(self, dataset: str = "cifar100"):
         self.dataset   = dataset
         self.mean      = STATS[dataset]["mean"]
         self.std       = STATS[dataset]["std"]
@@ -46,9 +56,14 @@ class NoAugmentation(AugmentationPolicy):
 
 
 class _FullStaticTransform:
-    """All 7 ops at FIXED_STRENGTH from epoch 1."""
+    """Samples _TIER_N_OPS[3] ops from the full Tier 3 pool at ceiling strength from epoch 1.
 
-    def __init__(self, dataset: str = "cifar10", strength: float = FIXED_STRENGTH):
+    Mirrors exactly what ThreeTierCurriculumTransform does in Tier 3 — same pool,
+    same sample size, same strength — so the only experimental variable is the
+    curriculum progression, not the number of ops per image.
+    """
+
+    def __init__(self, dataset: str = "cifar100", strength: float = FIXED_STRENGTH):
         mean = STATS[dataset]["mean"]
         std  = STATS[dataset]["std"]
         self.normalize = T.Normalize(mean, std)
@@ -56,7 +71,8 @@ class _FullStaticTransform:
         self.strength  = strength
 
     def __call__(self, img):
-        for name in _TIER_OPS[3]:
+        active = random.sample(_TIER_OPS[3], _TIER_N_OPS[3])
+        for name in active:
             fn, _, _ = AUGMENTATION_REGISTRY[name]
             img = fn(img, self.strength)
         return self.normalize(self.to_tensor(img))
@@ -75,14 +91,22 @@ class StaticAugmentation(AugmentationPolicy):
 
 class ThreeTierCurriculumTransform:
     """
-    Introduces ops in three tiers aligned with MultiStepLR milestones [33, 66].
+    Three-tier progressive augmentation curriculum.
     Call set_epoch(epoch) at the start of every training epoch.
+
+    Enhancements over the original design:
+      - Strength grows across tiers (40% → 70% → 100% of ceiling).
+      - Strength ramps smoothly over _STRENGTH_RAMP_EPOCHS at each boundary
+        instead of jumping instantly, decoupling the op-set transition from
+        the intensity transition.
+      - Ops are randomly subsampled within each tier (_TIER_N_OPS) so each
+        image sees a different subset, adding diversity without changing tiers.
     """
 
     TIER_LABELS = {
-        1: "Tier 1 [flip, crop]",
-        2: "Tier 2 [+color_jitter, rotation, shear]",
-        3: "Tier 3 [+grayscale, cutout]",
+        1: "Tier 1 [flip, crop, translate_x/y]",
+        2: "Tier 2 [+color_jitter, rotation, shear, auto_contrast, equalize, sharpness]",
+        3: "Tier 3 [+grayscale, cutout, contrast, brightness]",
     }
 
     def __init__(self, dataset: str = "cifar10", t1: int = 33, t2: int = 66,
@@ -91,28 +115,59 @@ class ThreeTierCurriculumTransform:
         std  = STATS[dataset]["std"]
         self.normalize = T.Normalize(mean, std)
         self.to_tensor = T.ToTensor()
-        self.t1       = t1
-        self.t2       = t2
-        self.epoch    = 1
-        self.strength = strength
+        self.t1           = t1
+        self.t2           = t2
+        self.epoch        = 1
+        self.strength     = strength   # ceiling — reached at Tier 3
+        self._forced_tier = None       # set by loss/entropy schedulers; None = time-based
 
     def set_epoch(self, epoch: int) -> None:
         self.epoch = epoch
 
+    def set_tier(self, tier: int) -> None:
+        """Override tier directly — used by loss-guided and entropy-guided schedulers.
+        Pass None to revert to time-based epoch logic."""
+        if tier is not None and tier not in (1, 2, 3):
+            raise ValueError(f"tier must be 1, 2, or 3, got {tier}")
+        self._forced_tier = tier
+
     def tier(self) -> int:
-        if self.epoch <= self.t1:
+        if self._forced_tier is not None:   # loss/entropy path
+            return self._forced_tier
+        if self.epoch <= self.t1:           # time-based path — unchanged
             return 1
-        elif self.epoch <= self.t2:
+        if self.epoch <= self.t2:
             return 2
         return 3
 
     def tier_label(self) -> str:
         return self.TIER_LABELS[self.tier()]
 
+    def _tier_strength(self, tier: int) -> float:
+        return self.strength * _TIER_STRENGTH_FRACS[tier]
+
+    def _current_strength(self) -> float:
+        """Linearly ramp strength over _STRENGTH_RAMP_EPOCHS after a tier boundary."""
+        tier = self.tier()
+        s_curr = self._tier_strength(tier)
+        if tier == 1:
+            return s_curr
+        boundary  = self.t1 if tier == 2 else self.t2
+        epochs_in = self.epoch - boundary          # 1 on first epoch of new tier
+        if 0 < epochs_in <= _STRENGTH_RAMP_EPOCHS:
+            s_prev = self._tier_strength(tier - 1)
+            return s_prev + (s_curr - s_prev) * (epochs_in / _STRENGTH_RAMP_EPOCHS)
+        return s_curr
+
     def __call__(self, img):
-        for name in _TIER_OPS[self.tier()]:
+        tier   = self.tier()
+        pool   = _TIER_OPS[tier]
+        n      = _TIER_N_OPS[tier]
+        active = random.sample(pool, n)
+        s      = self._current_strength()
+        for name in active:
             fn, _, _ = AUGMENTATION_REGISTRY[name]
-            img = fn(img, self.strength)
+            img = fn(img, s)
         return self.normalize(self.to_tensor(img))
 
 

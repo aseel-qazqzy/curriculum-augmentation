@@ -64,29 +64,30 @@ def get_cifar10_loaders(
     full_val_dataset   = datasets.CIFAR10(root, train=True,  download=True, transform=test_transform)
     test_dataset       = datasets.CIFAR10(root, train=False, download=True, transform=test_transform)
 
-    # Train / val split 
-    val_size   = int(len(full_train_dataset) * val_split)
-    if val_size < 1:
-        raise ValueError(f"val_split={val_split} produces an empty validation set.")
-    train_size = len(full_train_dataset) - val_size
-    indices    = torch.randperm(len(full_train_dataset),
-                                generator=torch.Generator().manual_seed(42))
-    train_dataset = torch.utils.data.Subset(full_train_dataset, indices[:train_size])
-    val_dataset   = torch.utils.data.Subset(full_val_dataset,   indices[train_size:])
+    if val_split == 0.0:
+        train_dataset = full_train_dataset
+        val_dataset   = None
+    else:
+        val_size   = int(len(full_train_dataset) * val_split)
+        if val_size < 1:
+            raise ValueError(f"val_split={val_split} produces an empty validation set.")
+        indices       = torch.randperm(len(full_train_dataset),
+                                       generator=torch.Generator().manual_seed(42))
+        train_dataset = torch.utils.data.Subset(full_train_dataset, indices[:len(full_train_dataset) - val_size])
+        val_dataset   = torch.utils.data.Subset(full_val_dataset,   indices[len(full_train_dataset) - val_size:])
 
-    # Debug modes
     if debug:
         train_dataset = torch.utils.data.Subset(train_dataset, range(512))
-        val_dataset   = torch.utils.data.Subset(val_dataset,   range(128))
+        val_dataset   = torch.utils.data.Subset(val_dataset,   range(128)) if val_dataset else None
         test_dataset  = torch.utils.data.Subset(test_dataset,  range(128))
 
-    pin_memory = torch.cuda.is_available()
-
+    pin_memory   = torch.cuda.is_available()
     train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True,  num_workers=num_workers, pin_memory=pin_memory)
-    val_loader   = DataLoader(val_dataset,   batch_size=batch_size, shuffle=False, num_workers=num_workers, pin_memory=pin_memory)
+    val_loader   = DataLoader(val_dataset,   batch_size=batch_size, shuffle=False, num_workers=num_workers, pin_memory=pin_memory) if val_dataset else None
     test_loader  = DataLoader(test_dataset,  batch_size=batch_size, shuffle=False, num_workers=num_workers, pin_memory=pin_memory)
 
-    print(f"CIFAR-10 loaded | Train: {len(train_dataset):,} | Val: {len(val_dataset):,} | Test: {len(test_dataset):,}")
+    val_str = f"{len(val_dataset):,}" if val_dataset else "none (full-train mode)"
+    print(f"CIFAR-10 loaded | Train: {len(train_dataset):,} | Val: {val_str} | Test: {len(test_dataset):,}")
     return train_loader, val_loader, test_loader
 
 def get_cifar100_loaders(
@@ -108,28 +109,30 @@ def get_cifar100_loaders(
     full_val_dataset   = datasets.CIFAR100(root, train=True,  download=True, transform=test_transform)
     test_dataset       = datasets.CIFAR100(root, train=False, download=True, transform=test_transform)
 
-    val_size   = int(len(full_train_dataset) * val_split)
-    if val_size < 1:
-        raise ValueError(f"val_split={val_split} produces an empty validation set.")
-    train_size = len(full_train_dataset) - val_size
-    indices    = torch.randperm(len(full_train_dataset),
-                                generator=torch.Generator().manual_seed(42))
-    train_dataset = torch.utils.data.Subset(full_train_dataset, indices[:train_size])
-    val_dataset   = torch.utils.data.Subset(full_val_dataset,   indices[train_size:])
+    if val_split == 0.0:
+        train_dataset = full_train_dataset
+        val_dataset   = None
+    else:
+        val_size   = int(len(full_train_dataset) * val_split)
+        if val_size < 1:
+            raise ValueError(f"val_split={val_split} produces an empty validation set.")
+        indices       = torch.randperm(len(full_train_dataset),
+                                       generator=torch.Generator().manual_seed(42))
+        train_dataset = torch.utils.data.Subset(full_train_dataset, indices[:len(full_train_dataset) - val_size])
+        val_dataset   = torch.utils.data.Subset(full_val_dataset,   indices[len(full_train_dataset) - val_size:])
 
-    # Debug mode
     if debug:
         train_dataset = torch.utils.data.Subset(train_dataset, range(512))
-        val_dataset   = torch.utils.data.Subset(val_dataset,   range(128))
+        val_dataset   = torch.utils.data.Subset(val_dataset,   range(128)) if val_dataset else None
         test_dataset  = torch.utils.data.Subset(test_dataset,  range(128))
 
-    pin_memory = torch.cuda.is_available()
-
+    pin_memory   = torch.cuda.is_available()
     train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True,  num_workers=num_workers, pin_memory=pin_memory)
-    val_loader   = DataLoader(val_dataset,   batch_size=batch_size, shuffle=False, num_workers=num_workers, pin_memory=pin_memory)
+    val_loader   = DataLoader(val_dataset,   batch_size=batch_size, shuffle=False, num_workers=num_workers, pin_memory=pin_memory) if val_dataset else None
     test_loader  = DataLoader(test_dataset,  batch_size=batch_size, shuffle=False, num_workers=num_workers, pin_memory=pin_memory)
 
-    print(f"CIFAR-100 loaded | Train: {len(train_dataset):,} | Val: {len(val_dataset):,} | Test: {len(test_dataset):,}")
+    val_str = f"{len(val_dataset):,}" if val_dataset else "none (full-train mode)"
+    print(f"CIFAR-100 loaded | Train: {len(train_dataset):,} | Val: {val_str} | Test: {len(test_dataset):,}")
     return train_loader, val_loader, test_loader
 
 def _reorganize_tiny_imagenet_val(val_dir):
@@ -196,25 +199,26 @@ def get_tiny_imagenet_loaders(
     # Official val/ — completely separate images, used only for final test
     test_ds    = datasets.ImageFolder(val_dir, transform=test_transform)
 
-    # Deterministic train / val split
-    val_size   = int(len(full_train) * val_split)
-    train_size = len(full_train) - val_size
-    indices    = torch.randperm(len(full_train),
-                                generator=torch.Generator().manual_seed(42))
-    train_ds = torch.utils.data.Subset(full_train, indices[:train_size])
-    val_ds   = torch.utils.data.Subset(full_val,   indices[train_size:])
+    if val_split == 0.0:
+        train_ds = full_train
+        val_ds   = None
+    else:
+        val_size = int(len(full_train) * val_split)
+        indices  = torch.randperm(len(full_train),
+                                  generator=torch.Generator().manual_seed(42))
+        train_ds = torch.utils.data.Subset(full_train, indices[:len(full_train) - val_size])
+        val_ds   = torch.utils.data.Subset(full_val,   indices[len(full_train) - val_size:])
 
     if debug:
         train_ds = torch.utils.data.Subset(train_ds, range(512))
-        val_ds   = torch.utils.data.Subset(val_ds,   range(128))
+        val_ds   = torch.utils.data.Subset(val_ds,   range(128)) if val_ds else None
         test_ds  = torch.utils.data.Subset(test_ds,  range(128))
 
-    pin_memory = torch.cuda.is_available()
-
+    pin_memory   = torch.cuda.is_available()
     train_loader = DataLoader(train_ds, batch_size=batch_size, shuffle=True,
                               num_workers=num_workers, pin_memory=pin_memory)
     val_loader   = DataLoader(val_ds,   batch_size=batch_size, shuffle=False,
-                              num_workers=num_workers, pin_memory=pin_memory)
+                              num_workers=num_workers, pin_memory=pin_memory) if val_ds else None
     test_loader  = DataLoader(test_ds,  batch_size=batch_size, shuffle=False,
                               num_workers=num_workers, pin_memory=pin_memory)
 

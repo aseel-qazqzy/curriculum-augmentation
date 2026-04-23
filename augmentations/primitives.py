@@ -63,17 +63,58 @@ def gaussian_blur(img: Image.Image, strength: float = 0.5) -> Image.Image:
     return T.GaussianBlur(kernel_size=kernel_size, sigma=sigma)(img)
 
 
+# ── New ops (match RandAugment paper op pool) ─────────────────────────────────
+
+def translate_x(img: Image.Image, strength: float = 0.5) -> Image.Image:
+    max_px    = int(img.size[0] * 0.33 * strength)
+    pixels    = random.randint(-max_px, max_px) if max_px > 0 else 0
+    return TF.affine(img, angle=0, translate=(pixels, 0), scale=1.0, shear=0, fill=128)
+
+def translate_y(img: Image.Image, strength: float = 0.5) -> Image.Image:
+    max_px    = int(img.size[1] * 0.33 * strength)
+    pixels    = random.randint(-max_px, max_px) if max_px > 0 else 0
+    return TF.affine(img, angle=0, translate=(0, pixels), scale=1.0, shear=0, fill=128)
+
+def equalize(img: Image.Image, strength: float = 1.0) -> Image.Image:
+    return ImageOps.equalize(img) if random.random() < 0.5 * strength else img
+
+def auto_contrast(img: Image.Image, strength: float = 1.0) -> Image.Image:
+    return ImageOps.autocontrast(img) if random.random() < 0.5 * strength else img
+
+def sharpness(img: Image.Image, strength: float = 0.5) -> Image.Image:
+    factor = 1.0 + random.uniform(-0.8 * strength, 0.8 * strength)
+    return ImageEnhance.Sharpness(img).enhance(max(0.1, factor))
+
+def enhance_contrast(img: Image.Image, strength: float = 0.5) -> Image.Image:
+    factor = 1.0 + random.uniform(-0.8 * strength, 0.8 * strength)
+    return ImageEnhance.Contrast(img).enhance(max(0.1, factor))
+
+def enhance_brightness(img: Image.Image, strength: float = 0.5) -> Image.Image:
+    factor = 1.0 + random.uniform(-0.8 * strength, 0.8 * strength)
+    return ImageEnhance.Brightness(img).enhance(max(0.1, factor))
+
+
 AUGMENTATION_REGISTRY = {
-    "flip":        (random_flip,          1,      0.0),
-    "crop":        (random_crop,          1,      0.0),
-    "color_jitter":(color_jitter,         2,      0.25),
-    "rotation":    (random_rotation,      2,      0.35),
-    "shear":       (random_shear,         2,      0.40),
-    "grayscale":   (random_grayscale,     3,      0.55),
-    "blur":        (gaussian_blur,        3,      0.60),
-    "cutout":      (cutout,               3,      0.70),
-    "solarize":    (solarize,             3,      0.80),
-    "posterize":   (posterize,            3,      0.85),
+    # Tier 1 — geometry only, semantics fully preserved
+    "flip":          (random_flip,        1,   0.0),
+    "crop":          (random_crop,        1,   0.0),
+    "translate_x":   (translate_x,        1,   0.0),
+    "translate_y":   (translate_y,        1,   0.0),
+    # Tier 2 — colour / texture distortion, structure intact
+    "auto_contrast": (auto_contrast,      2,   0.20),
+    "equalize":      (equalize,           2,   0.22),
+    "sharpness":     (sharpness,          2,   0.30),
+    "color_jitter":  (color_jitter,       2,   0.35),
+    "rotation":      (random_rotation,    2,   0.40),
+    "shear":         (random_shear,       2,   0.45),
+    # Tier 3 — information removal / aggressive distortion
+    "grayscale":     (random_grayscale,   3,   0.55),
+    "contrast":      (enhance_contrast,   3,   0.60),
+    "brightness":    (enhance_brightness, 3,   0.65),
+    "blur":          (gaussian_blur,      3,   0.68),
+    "cutout":        (cutout,             3,   0.72),
+    "solarize":      (solarize,           3,   0.82),
+    "posterize":     (posterize,          3,   0.88),
 }
 
 

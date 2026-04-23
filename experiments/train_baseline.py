@@ -24,6 +24,7 @@ from data.datasets import (
 from models.registry import get_model
 from experiments.utils import set_seed, get_device, build_optimizer, build_scheduler, setup_logging
 from experiments.config import BASE_CONFIG
+from training.trainer import train_one_epoch, evaluate
 
 
 DEFAULT_CONFIG = {
@@ -42,7 +43,7 @@ def build_transforms(cfg: dict):
     if aug == "none":
         return get_no_augmentation_transforms(dataset)
 
-    elif aug == "static":
+    elif aug in ("static", "static_mixing"):
         from augmentations.policies import StaticAugmentation
         policy = StaticAugmentation(dataset=dataset, strength=cfg.get("fixed_strength", 0.7))
         return policy.get_train_transform(), policy.get_val_transform()
@@ -58,55 +59,44 @@ def build_transforms(cfg: dict):
         return policy.get_train_transform(), policy.get_val_transform()
 
     elif aug == "tiered_curriculum":
+        schedule = cfg.get("tier_schedule", "ets")
+        if schedule != "ets":
+            raise NotImplementedError(
+                f"tier_schedule='{schedule}' is not yet implemented. "
+                f"LPS and EGS are planned for June. Use --tier_schedule ets."
+            )
         from augmentations.policies import ThreeTierCurriculumAugmentation
-        policy = ThreeTierCurriculumAugmentation(dataset=dataset, strength=cfg.get("fixed_strength", 0.7))
+        policy = ThreeTierCurriculumAugmentation(
+            dataset  = dataset,
+            t1 = cfg.get("tier_t1") or int(cfg["epochs"] * 0.33),
+            t2 = cfg.get("tier_t2") or int(cfg["epochs"] * 0.66),
+            strength = cfg.get("fixed_strength", 0.7),
+        )
         return policy.get_train_transform(), policy.get_val_transform()
 
     else:
         raise ValueError(
             f"Unknown augmentation '{aug}'. "
-            f"Choose from: none, static, random, randaugment, tiered_curriculum"
+            f"Choose from: none, static, static_mixing, random, randaugment, tiered_curriculum"
         )
 
-
-def train_one_epoch(model, loader, optimizer, criterion, device):
-    model.train()
-    total_loss, correct, total = 0.0, 0, 0
-    for images, labels in loader:
-        images, labels = images.to(device), labels.to(device)
-        optimizer.zero_grad()
-        outputs = model(images)
-        loss    = criterion(outputs, labels)
-        loss.backward()
-        optimizer.step()
-        total_loss += loss.item() * images.size(0)
-        correct    += outputs.argmax(dim=1).eq(labels).sum().item()
-        total      += labels.size(0)
-    return total_loss / total, correct / total
-
-
-@torch.no_grad()
-def evaluate(model, loader, criterion, device):
-    model.eval()
-    total_loss, correct1, correct5, total = 0.0, 0, 0, 0
-    for images, labels in loader:
-        images, labels = images.to(device), labels.to(device)
-        outputs     = model(images)
-        total_loss += criterion(outputs, labels).item() * images.size(0)
-        correct1   += outputs.argmax(dim=1).eq(labels).sum().item()
-        k           = min(5, outputs.size(1))
-        correct5   += outputs.topk(k, dim=1).indices.eq(labels.unsqueeze(1)).any(dim=1).sum().item()
-        total      += labels.size(0)
-    return total_loss / total, correct1 / total, correct5 / total
 
 
 def main(cfg: dict):
     dataset = cfg["dataset"]
     if cfg["experiment_name"] == DEFAULT_CONFIG["experiment_name"]:
-        cfg["experiment_name"] = (
-            f"{cfg['model']}_{cfg['augmentation']}_aug"
-            f"_{cfg['optimizer']}_{cfg['scheduler']}"
-        )
+        aug = cfg["augmentation"]
+        if aug == "tiered_curriculum":
+            schedule = cfg.get("tier_schedule", "ets")
+            cfg["experiment_name"] = (
+                f"{cfg['model']}_tiered_{schedule}"
+                f"_{cfg['optimizer']}_{cfg['scheduler']}"
+            )
+        else:
+            cfg["experiment_name"] = (
+                f"{cfg['model']}_{aug}"
+                f"_{cfg['optimizer']}_{cfg['scheduler']}"
+            )
 
     if not cfg["experiment_name"].endswith(f"_{dataset}"):
         cfg["experiment_name"] = f"{cfg['experiment_name']}_{dataset}"
@@ -122,10 +112,28 @@ def main(cfg: dict):
     print(f"  Augmentation: {cfg['augmentation']}"
           + (f"  (N={cfg['ra_n']}, M={cfg['ra_m']})" if cfg['augmentation'] == 'randaugment' else ""))
     if cfg['augmentation'] == 'tiered_curriculum':
-        print("  Tier 1 (ep  1-33): flip, crop")
-        print("  Tier 2 (ep 34-66): + color_jitter, rotation, shear")
-        print("  Tier 3 (ep 67-end): + grayscale, cutout")
-        print(f"  Strength (all ops): {cfg.get('fixed_strength', 0.5)}")
+        from augmentations.policies import _TIER_STRENGTH_FRACS, _TIER_N_OPS, _STRENGTH_RAMP_EPOCHS
+        t1 = cfg.get('tier_t1') or int(cfg['epochs'] * 0.33)
+        t2 = cfg.get('tier_t2') or int(cfg['epochs'] * 0.66)
+        ceil   = cfg.get('fixed_strength', 0.7)
+        s1     = ceil * _TIER_STRENGTH_FRACS[1]
+        s2     = ceil * _TIER_STRENGTH_FRACS[2]
+        s3     = ceil * _TIER_STRENGTH_FRACS[3]
+        print(f"  Tier 1 (ep   1-{t1:2d}): flip, crop, translate_x/y"
+              f"  |  sample {_TIER_N_OPS[1]}/4  |  strength {s1:.2f}")
+        print(f"  Tier 2 (ep {t1+1:2d}-{t2:2d}): +color_jitter, rotation, shear, auto_contrast, equalize, sharpness"
+              f"  |  sample {_TIER_N_OPS[2]}/10  |  strength {s2:.2f} (ramp {_STRENGTH_RAMP_EPOCHS} ep)")
+        print(f"  Tier 3 (ep {t2+1:2d}-end): +grayscale, cutout, contrast, brightness"
+              f"  |  sample {_TIER_N_OPS[3]}/14  |  strength {s3:.2f} (ramp {_STRENGTH_RAMP_EPOCHS} ep)")
+        mix_mode = cfg.get('mix_mode', 'both')
+        if mix_mode != 'none':
+            print(f"  Mixing      : {mix_mode}  alpha={cfg.get('mix_alpha', 1.0)}  "
+                  f"p={cfg.get('mix_prob', 0.5)}  (Tier 3 only)")
+    if cfg['augmentation'] == 'static_mixing':
+        mix_mode = cfg.get('mix_mode', 'both')
+        print(f"  Ops         : all 7 from epoch 1  |  strength {cfg.get('fixed_strength', 0.7)}")
+        print(f"  Mixing      : {mix_mode}  alpha={cfg.get('mix_alpha', 1.0)}  "
+              f"p={cfg.get('mix_prob', 0.5)}  (from epoch 1)")
     print(f"  Epochs      : {cfg['epochs']} | Batch: {cfg['batch_size']}")
 
     if cfg.get("use_wandb"):
@@ -155,6 +163,22 @@ def main(cfg: dict):
 
     optimizer, _         = build_optimizer(model, cfg)
     scheduler, milestones = build_scheduler(optimizer, cfg)
+
+    use_amp = cfg.get("use_amp", False) and device.type == "cuda"
+    scaler  = torch.amp.GradScaler("cuda") if use_amp else None
+    if use_amp:
+        print("  AMP         : enabled (float16)")
+
+    mixer = None
+    if (cfg["augmentation"] in ("tiered_curriculum", "static_mixing")
+            and cfg.get("mix_mode", "both") != "none"):
+        from augmentations.mixing import BatchMixer
+        mixer = BatchMixer(
+            mode  = cfg.get("mix_mode",  "both"),
+            alpha = cfg.get("mix_alpha", 1.0),
+            p     = cfg.get("mix_prob",  0.5),
+        )
+
     print(f"{'='*60}\n")
 
     Path(cfg["checkpoint_dir"]).mkdir(parents=True, exist_ok=True)
@@ -192,8 +216,22 @@ def main(cfg: dict):
         if hasattr(train_transform, "set_epoch"):
             train_transform.set_epoch(epoch)
 
-        train_loss, train_acc       = train_one_epoch(model, train_loader, optimizer, criterion, device)
-        val_loss, val_acc, val_top5 = evaluate(model, val_loader, criterion, device)
+        if cfg["augmentation"] == "static_mixing":
+            active_mixer = mixer                          # always on from epoch 1
+        else:
+            active_mixer = (mixer                        # tiered: Tier 3 only
+                            if mixer is not None
+                            and hasattr(train_transform, "tier")
+                            and train_transform.tier() >= 3
+                            else None)
+        train_loss, train_acc = train_one_epoch(model, train_loader, optimizer, criterion, device,
+                                                scaler=scaler, mixer=active_mixer)
+
+        use_val = val_loader is not None
+        if use_val:
+            val_loss, val_acc, val_top5 = evaluate(model, val_loader, criterion, device)
+        else:
+            val_loss, val_acc, val_top5 = 0.0, 0.0, 0.0
 
         if scheduler:
             scheduler.step()
@@ -207,42 +245,64 @@ def main(cfg: dict):
 
         if cfg.get("use_wandb"):
             import wandb
-            wandb.log({
-                "epoch": epoch, "train_loss": train_loss, "train_acc": train_acc,
-                "val_loss": val_loss, "val_acc": val_acc, "val_top5": val_top5,
-                "lr": optimizer.param_groups[0]["lr"],
-            })
+            log_dict = {"epoch": epoch, "train_loss": train_loss, "train_acc": train_acc,
+                        "lr": optimizer.param_groups[0]["lr"]}
+            if use_val:
+                log_dict.update({"val_loss": val_loss, "val_acc": val_acc, "val_top5": val_top5})
+            wandb.log(log_dict)
 
         if epoch % cfg["log_every"] == 0 or epoch == 1 or cfg.get("debug"):
             elapsed  = time.time() - start_time
             tier_str = f" | {train_transform.tier_label()}" if hasattr(train_transform, "tier_label") else ""
-            print(
-                f"Epoch [{epoch:>3}/{cfg['epochs']}] "
-                f"Train: {train_loss:.4f} / {train_acc*100:.2f}% | "
-                f"Val: {val_loss:.4f} / {val_acc*100:.2f}% | "
-                f"Top-5: {val_top5*100:.2f}% | "
-                f"LR: {optimizer.param_groups[0]['lr']:.5f}{tier_str} | "
-                f"Time: {elapsed:.0f}s"
-            )
+            if use_val:
+                print(
+                    f"Epoch [{epoch:>3}/{cfg['epochs']}] "
+                    f"Train: {train_loss:.4f} / {train_acc*100:.2f}% | "
+                    f"Val: {val_loss:.4f} / {val_acc*100:.2f}% | "
+                    f"Top-5: {val_top5*100:.2f}% | "
+                    f"LR: {optimizer.param_groups[0]['lr']:.5f}{tier_str} | "
+                    f"Time: {elapsed:.0f}s"
+                )
+            else:
+                print(
+                    f"Epoch [{epoch:>3}/{cfg['epochs']}] "
+                    f"Train: {train_loss:.4f} / {train_acc*100:.2f}% | "
+                    f"LR: {optimizer.param_groups[0]['lr']:.5f}{tier_str} | "
+                    f"Time: {elapsed:.0f}s"
+                )
 
-        if val_acc > best_val_acc:
-            best_val_acc = val_acc
-            es_counter   = 0
-            torch.save({
-                "epoch":            epoch,
-                "model_state_dict": model.state_dict(),
-                "optimizer_state":  optimizer.state_dict(),
-                "scheduler_state":  scheduler.state_dict() if scheduler else None,
-                "val_acc":          val_acc,
-                "history":          history,
-                "cfg":              {**cfg, "milestones": milestones},
-            }, ckpt_path)
-            print(f"Best saved (epoch={epoch}, val_acc={val_acc*100:.2f}%)")
+        if use_val:
+            if val_acc > best_val_acc:
+                best_val_acc = val_acc
+                es_counter   = 0
+                torch.save({
+                    "epoch":            epoch,
+                    "model_state_dict": model.state_dict(),
+                    "optimizer_state":  optimizer.state_dict(),
+                    "scheduler_state":  scheduler.state_dict() if scheduler else None,
+                    "val_acc":          val_acc,
+                    "history":          history,
+                    "cfg":              {**cfg, "milestones": milestones},
+                }, ckpt_path)
+                print(f"Best saved (epoch={epoch}, val_acc={val_acc*100:.2f}%)")
+            else:
+                es_counter += 1
+                if es_patience > 0 and es_counter >= es_patience:
+                    print(f"Early stopping at epoch {epoch} — no improvement for {es_patience} epochs.")
+                    break
         else:
-            es_counter += 1
-            if es_patience > 0 and es_counter >= es_patience:
-                print(f"Early stopping at epoch {epoch} — no improvement for {es_patience} epochs.")
-                break
+            # Full-train mode: save at last epoch only
+            if epoch == cfg["epochs"]:
+                torch.save({
+                    "epoch":            epoch,
+                    "model_state_dict": model.state_dict(),
+                    "optimizer_state":  optimizer.state_dict(),
+                    "scheduler_state":  scheduler.state_dict() if scheduler else None,
+                    "val_acc":          0.0,
+                    "history":          history,
+                    "cfg":              {**cfg, "milestones": milestones},
+                }, ckpt_path)
+                print(f"Checkpoint saved (epoch={epoch}, full-train mode)")
 
     best_ckpt = torch.load(ckpt_path, map_location=device, weights_only=False)
     model.load_state_dict(best_ckpt["model_state_dict"])
@@ -255,12 +315,36 @@ def main(cfg: dict):
     best_ckpt["total_minutes"] = total_time / 60
     torch.save(best_ckpt, ckpt_path)
 
-    print(f"\n── FINAL RESULTS: {cfg['experiment_name']} ──")
-    print(f"  Best Val Top-1 : {best_val_acc*100:.2f}%")
-    print(f"  Test Top-1     : {test_top1*100:.2f}%")
-    print(f"  Test Top-5     : {test_top5*100:.2f}%")
-    print(f"  Val-Test Gap   : {abs(best_val_acc - test_top1)*100:.2f}%")
-    print(f"  Total Time     : {total_time/60:.1f} min")
+    last_train_loss = history["train_loss"][-1] if history["train_loss"] else 0.0
+    last_train_acc  = history["train_acc"][-1]  if history["train_acc"]  else 0.0
+    last_val_loss   = history["val_loss"][-1]   if history["val_loss"]   else 0.0
+    last_val_acc    = history["val_acc"][-1]    if history["val_acc"]    else 0.0
+    best_epoch      = best_ckpt.get("epoch", "—")
+    full_train_mode = val_loader is None
+
+    sep = "─" * 60
+    print(f"\n{sep}")
+    print(f"  FINAL RESULTS: {cfg['experiment_name']}")
+    mode_str = "full-train (val_split=0.0)" if full_train_mode else f"dev (val_split={cfg['val_split']})"
+    print(f"  Mode: {mode_str}")
+    print(sep)
+    print(f"  {'Metric':<22}  {'Value':>10}")
+    print(f"  {'─'*22}  {'─'*10}")
+    print(f"  {'Train Loss (last ep)':<22}  {last_train_loss:>10.4f}")
+    print(f"  {'Train Acc  (last ep)':<22}  {last_train_acc*100:>9.2f}%")
+    if not full_train_mode:
+        print(f"  {'Val Loss   (last ep)':<22}  {last_val_loss:>10.4f}")
+        print(f"  {'Val Acc    (last ep)':<22}  {last_val_acc*100:>9.2f}%")
+    print(f"  {'─'*22}  {'─'*10}")
+    if not full_train_mode:
+        print(f"  {'Best Val Top-1':<22}  {best_val_acc*100:>9.2f}%  (epoch {best_epoch})")
+    print(f"  {'Test Top-1':<22}  {test_top1*100:>9.2f}%")
+    print(f"  {'Test Top-5':<22}  {test_top5*100:>9.2f}%")
+    if not full_train_mode:
+        print(f"  {'Val–Test Gap':<22}  {abs(best_val_acc - test_top1)*100:>9.2f}%")
+    print(f"  {'─'*22}  {'─'*10}")
+    print(f"  {'Total Time':<22}  {total_time/60:>9.1f} min")
+    print(sep)
 
     if cfg.get("use_wandb"):
         import wandb
@@ -279,7 +363,7 @@ def parse_args():
                         choices=["resnet18", "resnet50", "wideresnet", "wrn16_8",
                                  "pyramidnet", "pyramidnet272", "baseline_cnn"])
     parser.add_argument("--augmentation",    type=str,   default=None,
-                        choices=["none", "static", "random", "randaugment", "tiered_curriculum"])
+                        choices=["none", "static", "static_mixing", "random", "randaugment", "tiered_curriculum"])
     parser.add_argument("--ra_n",            type=int,   default=None)
     parser.add_argument("--ra_m",            type=int,   default=None)
     parser.add_argument("--epochs",          type=int,   default=None)
@@ -295,9 +379,28 @@ def parse_args():
     parser.add_argument("--debug",           action="store_true",
                         help="2 epochs on 512 samples — quick smoke test")
     parser.add_argument("--resume",          type=str, default=None)
+    parser.add_argument("--val_split",               type=float, default=None,
+                        help="Validation fraction: 0.1=dev mode (45k/5k), 0.0=full-train mode (50k)")
     parser.add_argument("--early_stopping_patience", type=int, default=None)
     parser.add_argument("--fixed_strength",  type=float, default=None,
                         help="Augmentation op strength 0.0–1.0 (default: 0.7)")
+    parser.add_argument("--tier_schedule",    type=str,   default=None,
+                        choices=["ets", "lps", "egs"],
+                        help="Scheduling signal for tiered_curriculum: "
+                             "ets=Epoch-Threshold, lps=Loss-Plateau, egs=Entropy-Guided (default: ets)")
+    parser.add_argument("--tier_t1",         type=int,   default=None,
+                        help="ETS: epoch to advance to tier 2 (default: 33%% of epochs)")
+    parser.add_argument("--tier_t2",         type=int,   default=None,
+                        help="ETS: epoch to advance to tier 3 (default: 66%% of epochs)")
+    parser.add_argument("--use_amp",         action="store_true",
+                        help="Enable automatic mixed precision (CUDA only)")
+    parser.add_argument("--mix_mode",        type=str,   default=None,
+                        choices=["cutmix", "mixup", "both", "none"],
+                        help="Batch mixing in Tier 3 (default: both)")
+    parser.add_argument("--mix_alpha",       type=float, default=None,
+                        help="Beta(alpha, alpha) for mix ratio (default: 1.0)")
+    parser.add_argument("--mix_prob",        type=float, default=None,
+                        help="Probability of mixing a batch in Tier 3 (default: 0.5)")
 
     return parser.parse_args()
 
@@ -309,9 +412,19 @@ if __name__ == "__main__":
     for key in ["dataset", "model", "augmentation", "ra_n", "ra_m",
                 "epochs", "batch_size", "lr", "optimizer", "scheduler",
                 "experiment_name", "checkpoint_dir", "resume",
-                "early_stopping_patience", "fixed_strength"]:
+                "val_split", "early_stopping_patience", "fixed_strength",
+                "tier_schedule", "tier_t1", "tier_t2",
+                "mix_mode", "mix_alpha", "mix_prob"]:
         val = getattr(args, key, None)
         if val is not None:
             cfg[key] = val
+
+    if args.debug:
+        cfg["debug"]  = True
+        cfg["epochs"] = 2
+    if args.use_wandb:
+        cfg["use_wandb"] = True
+    if args.use_amp:
+        cfg["use_amp"] = True
 
     main(cfg)

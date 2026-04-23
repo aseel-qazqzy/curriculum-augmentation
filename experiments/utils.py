@@ -17,11 +17,10 @@ import torch.nn as nn
 class _Tee:
     """
     Mirrors all writes to sys.stdout into a log file simultaneously.
-    Used by setup_logging() — restores sys.stdout on close().
     """
     def __init__(self, log_path: Path):
         self._console  = sys.stdout
-        self._log_file = open(log_path, "w", buffering=1)  # line-buffered
+        self._log_file = open(log_path, "w", buffering=1) 
         sys.stdout     = self
 
     def write(self, msg: str):
@@ -41,11 +40,6 @@ def setup_logging(cfg: dict) -> _Tee:
     """
     Creates results/logs/<experiment_name>_<timestamp>.log and starts
     mirroring all stdout output into it.
-
-    Call at the top of main() — before any prints.
-    Call tee.close() at the very end to restore stdout.
-
-    Returns the _Tee instance (keep a reference so it isn't GC'd).
     """
     log_dir = Path(cfg.get("checkpoint_dir", "./checkpoints")).parent / "results" / "logs"
     log_dir.mkdir(parents=True, exist_ok=True)
@@ -67,11 +61,28 @@ def set_seed(seed: int = 42):
     torch.backends.cudnn.benchmark     = False
 
 
+def _mps_is_stable() -> bool:
+    """Return False if the MPS backend crashes on a conv2d probe (PyTorch < 2.1 is unreliable)."""
+    try:
+        import subprocess, sys
+        result = subprocess.run(
+            [sys.executable, "-c",
+             "import torch, torch.nn as nn; "
+             "x = torch.randn(2, 3, 32, 32, device='mps'); "
+             "y = nn.Conv2d(3, 16, 3, padding=1).to('mps')(x); "
+             "assert y.shape == (2, 16, 32, 32)"],
+            timeout=15, capture_output=True,
+        )
+        return result.returncode == 0
+    except Exception:
+        return False
+
+
 def get_device() -> torch.device:
     if torch.cuda.is_available():
         device = torch.device("cuda")
         print(f"  Device      : CUDA | {torch.cuda.get_device_name(0)}")
-    elif torch.backends.mps.is_available():
+    elif torch.backends.mps.is_available() and _mps_is_stable():
         device = torch.device("mps")
         print(f"  Device      : MPS (Apple Silicon)")
     else:

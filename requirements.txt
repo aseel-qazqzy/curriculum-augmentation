@@ -5,9 +5,9 @@
 # ─────────────────────────────────────────
 
 # ── Core Deep Learning ──────────────────
-torch>=2.0.0
-torchvision>=0.15.0
-torchaudio>=2.0.0          # optional, needed if torch ecosystem tools require it
+torch>=2.1.0
+torchvision>=0.16.0
+torchaudio>=2.1.0          # optional, needed if torch ecosystem tools require it
 
 # ── Data & Augmentation ─────────────────
 numpy>=1.24.0

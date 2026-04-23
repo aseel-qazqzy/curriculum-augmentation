@@ -15,18 +15,41 @@ from training.losses import (
 from augmentations.curriculum import CurriculumDataset
 
 
-def train_one_epoch(model, loader, optimizer, criterion, device):
+def train_one_epoch(model, loader, optimizer, criterion, device, scaler=None, mixer=None):
     model.train()
     total_loss, correct, total = 0.0, 0, 0
+    use_amp  = scaler is not None
+    ac_type  = device.type
     for images, labels in loader:
         images, labels = images.to(device), labels.to(device)
+
+        # Stage 2: batch-level mixing (Tier 3 only — mixer is None for Tiers 1 & 2)
+        label_a, label_b, lam = labels, labels, 1.0
+        if mixer is not None:
+            images, label_a, label_b, lam = mixer(images, labels)
+
         optimizer.zero_grad()
-        outputs = model(images)
-        loss    = criterion(outputs, labels)
-        loss.backward()
-        optimizer.step()
+        with torch.autocast(device_type=ac_type, enabled=use_amp):
+            outputs = model(images)
+            if lam >= 1.0 - 1e-6:
+                loss = criterion(outputs, label_a)
+            else:
+                loss = (lam * criterion(outputs, label_a)
+                        + (1.0 - lam) * criterion(outputs, label_b))
+        if use_amp:
+            scaler.scale(loss).backward()
+            scaler.step(optimizer)
+            scaler.update()
+        else:
+            loss.backward()
+            optimizer.step()
         total_loss += loss.item() * images.size(0)
-        correct    += outputs.argmax(dim=1).eq(labels).sum().item()
+        pred        = outputs.argmax(dim=1)
+        if lam >= 1.0 - 1e-6:
+            correct += pred.eq(label_a).sum().item()
+        else:
+            correct += (lam * pred.eq(label_a).float()
+                        + (1.0 - lam) * pred.eq(label_b).float()).sum().item()
         total      += labels.size(0)
     return total_loss / total, correct / total
 
@@ -47,11 +70,17 @@ def train_one_epoch_cl(
     warmup_epochs: int = 5,
     aug_milestones: list = None,
     max_difficulty: float = 1.0,
+    scaler         = None,
 ):
     model.train()
     total_loss, correct, total = 0.0, 0, 0
-    all_indices      = []
-    all_difficulties = []
+    use_amp  = scaler is not None
+    ac_type  = device.type
+
+    n        = len(cl_dataset)
+    idx_buf  = torch.empty(n, dtype=torch.long)
+    diff_buf = torch.empty(n, dtype=torch.float32)
+    ptr      = 0
 
     criterion_per_sample = nn.CrossEntropyLoss(reduction="none")
 
@@ -61,14 +90,19 @@ def train_one_epoch_cl(
         indices = indices.to(device)
 
         optimizer.zero_grad()
-        outputs = model(images)
-
-        loss = criterion(outputs, labels)
-        loss.backward()
-        optimizer.step()
+        with torch.autocast(device_type=ac_type, enabled=use_amp):
+            outputs = model(images)
+            loss    = criterion(outputs, labels)
+        if use_amp:
+            scaler.scale(loss).backward()
+            scaler.step(optimizer)
+            scaler.update()
+        else:
+            loss.backward()
+            optimizer.step()
 
         with torch.no_grad():
-            per_sample_loss = criterion_per_sample(outputs, labels)
+            per_sample_loss = criterion_per_sample(outputs.float(), labels)
 
         loss_tracker.update(indices, per_sample_loss)
 
@@ -84,21 +118,21 @@ def train_one_epoch_cl(
             max_difficulty=max_difficulty,
         )
 
-        all_indices.append(indices.cpu())
-        all_difficulties.append(difficulties.cpu())
+        b = indices.size(0)
+        idx_buf[ptr:ptr + b]  = indices.cpu()
+        diff_buf[ptr:ptr + b] = difficulties.cpu()
+        ptr += b
 
         total_loss += loss.item() * images.size(0)
         correct    += outputs.argmax(1).eq(labels).sum().item()
         total      += labels.size(0)
 
-    if all_indices:
-        idx_tensor  = torch.cat(all_indices)
-        diff_tensor = torch.cat(all_difficulties)
-        new_diffs   = cl_dataset.difficulties.clone()
-        new_diffs[idx_tensor] = diff_tensor
+    if ptr > 0:
+        new_diffs = cl_dataset.difficulties.clone()
+        new_diffs[idx_buf[:ptr]] = diff_buf[:ptr]
         cl_dataset.set_difficulties(new_diffs)
 
-    mean_diff = float(torch.cat(all_difficulties).mean()) if all_difficulties else 0.0
+    mean_diff = float(diff_buf[:ptr].mean()) if ptr > 0 else 0.0
     return total_loss / total, correct / total, mean_diff
 
 
@@ -143,6 +177,8 @@ def run_training(
 ):
     """Full training loop. Curriculum mode if cl_dataset and loss_tracker are provided."""
     is_cl      = cl_dataset is not None and loss_tracker is not None
+    use_amp    = cfg.get("use_amp", False) and device.type == "cuda"
+    scaler     = torch.amp.GradScaler("cuda") if use_amp else None
     epochs     = cfg["epochs"]
     log_every  = cfg.get("log_every", 10)
     ckpt_dir   = cfg["checkpoint_dir"]
@@ -196,10 +232,11 @@ def run_training(
                 warmup_epochs=cfg.get("warmup_epochs", 5),
                 aug_milestones=cfg.get("aug_milestones", None),
                 max_difficulty=cfg.get("max_difficulty", 1.0),
+                scaler=scaler,
             )
         else:
             train_loss, train_acc = train_one_epoch(
-                model, train_loader, optimizer, criterion, device
+                model, train_loader, optimizer, criterion, device, scaler=scaler
             )
             mean_diff = 0.0
 

@@ -147,15 +147,15 @@ class LossTracker:
         self.n_updates = np.zeros(self.n_samples, dtype=np.int32)
 
     def update(self, indices: torch.Tensor, losses: torch.Tensor):
-        idx = indices.cpu().numpy()
-        lss = losses.detach().cpu().numpy()
-        for i, l in zip(idx, lss):
-            if self.n_updates[i] == 0:
-                self.ema_loss[i] = l
-            else:
-                self.ema_loss[i] = (self.momentum * self.ema_loss[i]
-                                    + (1 - self.momentum) * l)
-            self.n_updates[i] += 1
+        idx        = indices.cpu().numpy()
+        lss        = losses.detach().cpu().numpy()
+        first_seen = self.n_updates[idx] == 0
+        self.ema_loss[idx] = np.where(
+            first_seen,
+            lss,
+            self.momentum * self.ema_loss[idx] + (1.0 - self.momentum) * lss,
+        )
+        self.n_updates[idx] += 1
 
     def get_difficulty(self, indices: torch.Tensor, mode: str = "inverse") -> torch.Tensor:
         idx    = indices.cpu().numpy()
