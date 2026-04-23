@@ -401,6 +401,8 @@ def parse_args():
                         help="Beta(alpha, alpha) for mix ratio (default: 1.0)")
     parser.add_argument("--mix_prob",        type=float, default=None,
                         help="Probability of mixing a batch in Tier 3 (default: 0.5)")
+    parser.add_argument("--seed",            type=int,   default=None,
+                        help="Random seed for reproducibility (default: 42)")
 
     return parser.parse_args()
 
@@ -414,7 +416,7 @@ if __name__ == "__main__":
                 "experiment_name", "checkpoint_dir", "resume",
                 "val_split", "early_stopping_patience", "fixed_strength",
                 "tier_schedule", "tier_t1", "tier_t2",
-                "mix_mode", "mix_alpha", "mix_prob"]:
+                "mix_mode", "mix_alpha", "mix_prob", "seed"]:
         val = getattr(args, key, None)
         if val is not None:
             cfg[key] = val
