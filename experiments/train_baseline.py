@@ -87,9 +87,11 @@ def main(cfg: dict):
     if cfg["experiment_name"] == DEFAULT_CONFIG["experiment_name"]:
         aug = cfg["augmentation"]
         if aug == "tiered_curriculum":
-            schedule = cfg.get("tier_schedule", "ets")
+            schedule  = cfg.get("tier_schedule", "ets")
+            mix_mode  = cfg.get("mix_mode", "both")
+            mix_tag   = "nomix" if mix_mode == "none" else f"mix_{mix_mode}"
             cfg["experiment_name"] = (
-                f"{cfg['model']}_tiered_{schedule}"
+                f"{cfg['model']}_tiered_{schedule}_{mix_tag}"
                 f"_{cfg['optimizer']}_{cfg['scheduler']}"
             )
         else:
