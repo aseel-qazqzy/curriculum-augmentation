@@ -66,10 +66,16 @@ def build_transforms(cfg: dict):
                 f"LPS and EGS are planned for June. Use --tier_schedule ets."
             )
         from augmentations.policies import ThreeTierCurriculumAugmentation
+        def _resolve_tier(val, frac, epochs):
+            if val is None:
+                return int(epochs * frac)
+            return int(val * epochs) if 0.0 < val < 1.0 else int(val)
+
+        epochs = cfg["epochs"]
         policy = ThreeTierCurriculumAugmentation(
             dataset  = dataset,
-            t1 = cfg.get("tier_t1") or int(cfg["epochs"] * 0.33),
-            t2 = cfg.get("tier_t2") or int(cfg["epochs"] * 0.66),
+            t1 = _resolve_tier(cfg.get("tier_t1"), 0.33, epochs),
+            t2 = _resolve_tier(cfg.get("tier_t2"), 0.66, epochs),
             strength = cfg.get("fixed_strength", 0.7),
         )
         return policy.get_train_transform(), policy.get_val_transform()
@@ -100,6 +106,10 @@ def main(cfg: dict):
                 f"_{cfg['optimizer']}_{cfg['scheduler']}"
             )
 
+    epochs = cfg["epochs"]
+    if f"_ep{epochs}" not in cfg["experiment_name"]:
+        cfg["experiment_name"] = f"{cfg['experiment_name']}_ep{epochs}"
+
     if not cfg["experiment_name"].endswith(f"_{dataset}"):
         cfg["experiment_name"] = f"{cfg['experiment_name']}_{dataset}"
 
@@ -115,8 +125,12 @@ def main(cfg: dict):
           + (f"  (N={cfg['ra_n']}, M={cfg['ra_m']})" if cfg['augmentation'] == 'randaugment' else ""))
     if cfg['augmentation'] == 'tiered_curriculum':
         from augmentations.policies import _TIER_STRENGTH_FRACS, _TIER_N_OPS, _STRENGTH_RAMP_EPOCHS
-        t1 = cfg.get('tier_t1') or int(cfg['epochs'] * 0.33)
-        t2 = cfg.get('tier_t2') or int(cfg['epochs'] * 0.66)
+        def _resolve_tier(val, frac, epochs):
+            if val is None:
+                return int(epochs * frac)
+            return int(val * epochs) if 0.0 < val < 1.0 else int(val)
+        t1 = _resolve_tier(cfg.get('tier_t1'), 0.33, cfg['epochs'])
+        t2 = _resolve_tier(cfg.get('tier_t2'), 0.66, cfg['epochs'])
         ceil   = cfg.get('fixed_strength', 0.7)
         s1     = ceil * _TIER_STRENGTH_FRACS[1]
         s2     = ceil * _TIER_STRENGTH_FRACS[2]
@@ -129,8 +143,9 @@ def main(cfg: dict):
               f"  |  sample {_TIER_N_OPS[3]}/14  |  strength {s3:.2f} (ramp {_STRENGTH_RAMP_EPOCHS} ep)")
         mix_mode = cfg.get('mix_mode', 'both')
         if mix_mode != 'none':
+            ramp_str = "ramp enabled" if cfg.get('mix_ramp', False) else "ramp disabled"
             print(f"  Mixing      : {mix_mode}  alpha={cfg.get('mix_alpha', 1.0)}  "
-                  f"p={cfg.get('mix_prob', 0.5)}  (Tier 3 only)")
+                  f"p={cfg.get('mix_prob', 0.5)}  (Tier 3 only | {ramp_str})")
     if cfg['augmentation'] == 'static_mixing':
         mix_mode = cfg.get('mix_mode', 'both')
         print(f"  Ops         : all 7 from epoch 1  |  strength {cfg.get('fixed_strength', 0.7)}")
@@ -220,12 +235,20 @@ def main(cfg: dict):
 
         if cfg["augmentation"] == "static_mixing":
             active_mixer = mixer                          # always on from epoch 1
+        elif mixer is not None and hasattr(train_transform, "mix_scale"):
+            scale = train_transform.mix_scale()           # 0→1 at Tier 3 boundary
+            if scale <= 0.0:
+                active_mixer = None
+            elif cfg.get("mix_ramp", False):              # ramp enabled: gradually increase p and alpha
+                mixer.p     = cfg.get("mix_prob",  0.5) * scale
+                mixer.alpha = 0.2 + (cfg.get("mix_alpha", 1.0) - 0.2) * scale
+                active_mixer = mixer
+            else:                                         # ramp disabled: full strength from Tier 3 ep1
+                mixer.p     = cfg.get("mix_prob",  0.5)
+                mixer.alpha = cfg.get("mix_alpha", 1.0)
+                active_mixer = mixer
         else:
-            active_mixer = (mixer                        # tiered: Tier 3 only
-                            if mixer is not None
-                            and hasattr(train_transform, "tier")
-                            and train_transform.tier() >= 3
-                            else None)
+            active_mixer = None
         train_loss, train_acc = train_one_epoch(model, train_loader, optimizer, criterion, device,
                                                 scaler=scaler, mixer=active_mixer)
 
@@ -390,10 +413,10 @@ def parse_args():
                         choices=["ets", "lps", "egs"],
                         help="Scheduling signal for tiered_curriculum: "
                              "ets=Epoch-Threshold, lps=Loss-Plateau, egs=Entropy-Guided (default: ets)")
-    parser.add_argument("--tier_t1",         type=int,   default=None,
-                        help="ETS: epoch to advance to tier 2 (default: 33%% of epochs)")
-    parser.add_argument("--tier_t2",         type=int,   default=None,
-                        help="ETS: epoch to advance to tier 3 (default: 66%% of epochs)")
+    parser.add_argument("--tier_t1",         type=float, default=None,
+                        help="ETS: tier 1 boundary — int≥1 = absolute epoch, float 0–1 = fraction of epochs (default: 0.33)")
+    parser.add_argument("--tier_t2",         type=float, default=None,
+                        help="ETS: tier 2 boundary — int≥1 = absolute epoch, float 0–1 = fraction of epochs (default: 0.66)")
     parser.add_argument("--use_amp",         action="store_true",
                         help="Enable automatic mixed precision (CUDA only)")
     parser.add_argument("--mix_mode",        type=str,   default=None,
@@ -403,6 +426,8 @@ def parse_args():
                         help="Beta(alpha, alpha) for mix ratio (default: 1.0)")
     parser.add_argument("--mix_prob",        type=float, default=None,
                         help="Probability of mixing a batch in Tier 3 (default: 0.5)")
+    parser.add_argument("--mix_ramp",        action="store_true",  default=False,
+                        help="Gradually ramp mixing p and alpha over first 5 epochs of Tier 3 (default: disabled)")
     parser.add_argument("--seed",            type=int,   default=None,
                         help="Random seed for reproducibility (default: 42)")
 
@@ -418,7 +443,7 @@ if __name__ == "__main__":
                 "experiment_name", "checkpoint_dir", "resume",
                 "val_split", "early_stopping_patience", "fixed_strength",
                 "tier_schedule", "tier_t1", "tier_t2",
-                "mix_mode", "mix_alpha", "mix_prob", "seed"]:
+                "mix_mode", "mix_alpha", "mix_prob", "mix_ramp", "seed"]:
         val = getattr(args, key, None)
         if val is not None:
             cfg[key] = val

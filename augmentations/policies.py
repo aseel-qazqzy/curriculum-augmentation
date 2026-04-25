@@ -159,6 +159,16 @@ class ThreeTierCurriculumTransform:
             return s_prev + (s_curr - s_prev) * (epochs_in / _STRENGTH_RAMP_EPOCHS)
         return s_curr
 
+    def mix_scale(self) -> float:
+        """Returns 0.0 before Tier 3, then ramps linearly 0→1 over _STRENGTH_RAMP_EPOCHS.
+        Used by the training loop to ramp mixing probability and alpha gradually."""
+        if self.tier() < 3:
+            return 0.0
+        epochs_in = self.epoch - self.t2
+        if epochs_in <= _STRENGTH_RAMP_EPOCHS:
+            return epochs_in / _STRENGTH_RAMP_EPOCHS
+        return 1.0
+
     def __call__(self, img):
         tier   = self.tier()
         pool   = _TIER_OPS[tier]

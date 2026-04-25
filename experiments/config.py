@@ -36,9 +36,9 @@ BASE_CONFIG = {
     # egs = Entropy-Guided Scheduling   (June)
     "tier_schedule":   "ets",
 
-    # ETS tier boundaries — defaults to 33%/66% of epochs if None
-    "tier_t1":         None,
-    "tier_t2":         None,
+    # ETS tier boundaries — fraction of total epochs (0.0–1.0) or absolute epoch int
+    "tier_t1":         0.20,   # Tier 1 ends at 20% of epochs
+    "tier_t2":         0.45,   # Tier 2 ends at 45% of epochs
 
     # Batch-level mixing — active only in Tier 3 of tiered_curriculum
     "mix_mode":        "both",   # cutmix | mixup | both | none
