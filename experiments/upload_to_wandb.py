@@ -97,11 +97,16 @@ def upload_run(history_path: Path, project: str):
 
         wandb.log(log, step=epoch + 1)
 
+    # log final test metrics as a chart point at the last epoch
+    test_top1 = ckpt.get("test_top1", 0) * 100
+    test_top5 = ckpt.get("test_top5", 0) * 100
+    wandb.log({"test_top1": test_top1, "test_top5": test_top5}, step=n_epochs)
+
     # log final summary metrics
     summary = {
         "best_val_acc":  ckpt.get("val_acc", 0) * 100,
-        "test_top1":     ckpt.get("test_top1", 0) * 100,
-        "test_top5":     ckpt.get("test_top5", 0) * 100,
+        "test_top1":     test_top1,
+        "test_top5":     test_top5,
         "best_epoch":    ckpt.get("epoch", 0),
         "total_minutes": ckpt.get("total_minutes", 0),
     }
