@@ -66,8 +66,19 @@ def upload_run(history_path: Path, project: str):
         return
 
     run_name        = history_path.stem.replace("_history", "")
-    cfg             = ckpt.get("cfg", {})
+    cfg             = dict(ckpt.get("cfg", {}))
     group, label    = get_group_and_label(run_name)
+
+    # inject scheduler tag so LPS vs ETS is visible in W&B config
+    name_lower = run_name.lower()
+    if "_lps_" in name_lower:
+        cfg["scheduler"] = "LPS"
+    elif "_ets_" in name_lower:
+        cfg["scheduler"] = "ETS"
+    elif "cl_strength" in name_lower:
+        cfg["scheduler"] = "CL_strength"
+    else:
+        cfg["scheduler"] = "none"
 
     print(f"  Uploading: {run_name}  ({n_epochs} epochs)  [{group}]")
 
