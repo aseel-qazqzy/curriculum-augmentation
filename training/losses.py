@@ -35,7 +35,6 @@ def compute_sample_difficulty(
     else:
         raise ValueError(f"Unknown mode: {mode}. Use 'inverse', 'direct', or 'normalized'.")
 
-
 def epoch_difficulty(
     epoch: int,
     total_epochs: int,
@@ -79,7 +78,6 @@ def epoch_difficulty(
 
     return min(result, max_difficulty)
 
-
 def get_batch_difficulties(
     loss_per_sample: torch.Tensor,
     epoch: int,
@@ -102,7 +100,6 @@ def get_batch_difficulties(
     sample_diff    = compute_sample_difficulty(loss_per_sample, mode=mode)
     final          = blend * ep_diff_tensor + (1.0 - blend) * sample_diff
     return final.clamp(0.0, 1.0)
-
 
 class LabelSmoothingLoss(nn.Module):
     """Cross-entropy with label smoothing. Use reduction='none' for per-sample loss."""
@@ -129,7 +126,6 @@ class LabelSmoothingLoss(nn.Module):
             return loss
         else:
             return loss.sum()
-
 
 class LossTracker:
     """Exponential moving average of per-sample losses for stable difficulty signals."""
@@ -166,6 +162,74 @@ class LossTracker:
         seen = self.n_updates > 0
         return float(self.ema_loss[seen].mean()) if seen.any() else 0.0
 
+class LossPlateauScheduler:
+    def __init__(self, tau=0.02, window=5, min_epochs_per_tier=10, max_epochs_per_tier=0,
+                 higher_is_better=False):
+        self.tau = tau # min relative improvement to stay in tier
+        self.window = window # epochs to look back
+        self.min_epochs = min_epochs_per_tier
+        self.max_epochs = max_epochs_per_tier  # hard cap per tier; 0 = disabled
+        self.higher_is_better = higher_is_better  # True when tracking val_acc instead of loss
+        self.loss_history = []
+        self.tier_change_log = []
+        self.current_tier = 1
+        self.epochs_in_tier = 0
+        self._lr_drop_grace = 0  # suppress plateau check for N epochs after LR drop
+
+    def update(self, metric):
+        self.loss_history.append(metric)
+        self.epochs_in_tier += 1
+        if self._lr_drop_grace > 0:
+            self._lr_drop_grace -= 1
+
+    def should_advance(self):
+        if self.current_tier == 3:
+            return False
+
+        if self.epochs_in_tier < self.min_epochs: # Minimum epochs spent in this tier
+            return False
+
+        # Hard cap: force advancement if stuck too long 
+        if self.max_epochs > 0 and self.epochs_in_tier >= self.max_epochs:
+            return True
+
+        # Grace period after LR drop: metric improves temporarily (during lr mailstones), don't trigger on that
+        if self._lr_drop_grace > 0:
+            return False
+
+        if len(self.loss_history) < self.window * 2:
+            return False
+
+        recent_avg   = sum(self.loss_history[-self.window:]) / self.window
+        previous_avg = sum(self.loss_history[-self.window * 2:-self.window]) / self.window
+        denom = max(abs(previous_avg), 1e-8)
+        if self.higher_is_better:
+            improvement = (recent_avg - previous_avg) / denom   # val_acc: up is better
+        else:
+            improvement = (previous_avg - recent_avg) / denom   # loss: down is better
+        return improvement < self.tau
+
+    def advance(self, epoch: int = -1):
+        if self.current_tier < 3:
+            old_tier = self.current_tier
+            self.current_tier += 1
+            self.tier_change_log.append((epoch, old_tier, self.current_tier))
+            self.epochs_in_tier = 0
+            self.loss_history = []
+            self._lr_drop_grace = 0
+        return self.current_tier
+
+    # When learning rate drops: set a grace period instead of wiping history
+    def notify_lr_drop(self):
+        self._lr_drop_grace = self.window
+
+    # Return a readable summary of the current state
+    def __repr__(self):
+        return (f"LossPlateauScheduler(tier={self.current_tier}, "
+              f"tau={self.tau}, window={self.window}, "
+              f"epochs_in_tier={self.epochs_in_tier})")              
+    
+    
 
 if __name__ == "__main__":
     print("Testing losses.py...\n")

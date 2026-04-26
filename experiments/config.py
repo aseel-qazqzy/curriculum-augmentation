@@ -50,4 +50,9 @@ BASE_CONFIG = {
     "log_every":       10,
     "seed":            42,
     "use_wandb":       False,
+    
+    # Loss-based CL
+    "lps_tau":        0.02,
+    "lps_window":     5,
+    "lps_min_epochs": 10
 }

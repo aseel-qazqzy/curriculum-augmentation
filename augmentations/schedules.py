@@ -5,29 +5,24 @@ Epoch-level difficulty schedules — thin wrappers around training/losses.py.
 The canonical implementation lives in training/losses.py:epoch_difficulty().
 These wrappers keep the original per-schedule API for backwards compatibility.
 """
-
-from training.losses import epoch_difficulty
+from training.losses import epoch_difficulty, LossPlateauScheduler
 
 
 def sigmoid_schedule(epoch: int, total: int, warmup: int = 5) -> float:
     """Slow start, fast middle, plateau. Recommended default."""
     return epoch_difficulty(epoch, total, schedule="sigmoid", warmup_epochs=warmup)
 
-
 def linear_schedule(epoch: int, total: int, warmup: int = 5) -> float:
     """Constant ramp from 0 to 1."""
     return epoch_difficulty(epoch, total, schedule="linear", warmup_epochs=warmup)
-
 
 def cosine_schedule(epoch: int, total: int, warmup: int = 5) -> float:
     """Smooth cosine ramp."""
     return epoch_difficulty(epoch, total, schedule="cosine", warmup_epochs=warmup)
 
-
 def step_schedule(epoch: int, total: int, warmup: int = 5) -> float:
     """Discrete steps at 33%, 66%, 83% — aligns with MultiStepLR."""
     return epoch_difficulty(epoch, total, schedule="step", warmup_epochs=warmup)
-
 
 def milestone_schedule(epoch: int, total: int, warmup: int = 0,
                        aug_milestones: list = None) -> float:
@@ -44,7 +39,6 @@ SCHEDULE_REGISTRY = {
     "step":      step_schedule,
     "milestone": milestone_schedule,
 }
-
 
 def get_schedule(name: str):
     if name not in SCHEDULE_REGISTRY:

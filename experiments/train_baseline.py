@@ -2,17 +2,14 @@
 train_baseline.py - baseline training, no curriculum
 augmentation: none / static / random / randaugment
 """
-
 import os
 import sys
 import argparse
 import time
 from pathlib import Path
-
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
-
 import torch
 import torch.nn as nn
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from data.datasets import (
     get_cifar10_loaders,
@@ -60,11 +57,13 @@ def build_transforms(cfg: dict):
 
     elif aug == "tiered_curriculum":
         schedule = cfg.get("tier_schedule", "ets")
-        if schedule != "ets":
+        if schedule == "egs":
             raise NotImplementedError(
                 f"tier_schedule='{schedule}' is not yet implemented. "
                 f"LPS and EGS are planned for June. Use --tier_schedule ets."
             )
+    
+    
         from augmentations.policies import ThreeTierCurriculumAugmentation
         def _resolve_tier(val, frac, epochs):
             if val is None:
@@ -135,17 +134,24 @@ def main(cfg: dict):
         s1     = ceil * _TIER_STRENGTH_FRACS[1]
         s2     = ceil * _TIER_STRENGTH_FRACS[2]
         s3     = ceil * _TIER_STRENGTH_FRACS[3]
-        print(f"  Tier 1 (ep   1-{t1:2d}): flip, crop, translate_x/y"
+        is_lps = cfg.get('tier_schedule') == 'lps'
+        t1_str = "loss-guided" if is_lps else f"ep   1-{t1:2d}"
+        t2_str = "loss-guided" if is_lps else f"ep {t1+1:2d}-{t2:2d}"
+        t3_str = "loss-guided" if is_lps else f"ep {t2+1:2d}-end"
+        print(f"  Tier 1 ({t1_str}): flip, crop, translate_x/y"
               f"  |  sample {_TIER_N_OPS[1]}/4  |  strength {s1:.2f}")
-        print(f"  Tier 2 (ep {t1+1:2d}-{t2:2d}): +color_jitter, rotation, shear, auto_contrast, equalize, sharpness"
+        print(f"  Tier 2 ({t2_str}): +color_jitter, rotation, shear, auto_contrast, equalize, sharpness"
               f"  |  sample {_TIER_N_OPS[2]}/10  |  strength {s2:.2f} (ramp {_STRENGTH_RAMP_EPOCHS} ep)")
-        print(f"  Tier 3 (ep {t2+1:2d}-end): +grayscale, cutout, contrast, brightness"
+        print(f"  Tier 3 ({t3_str}): +grayscale, cutout, contrast, brightness"
               f"  |  sample {_TIER_N_OPS[3]}/14  |  strength {s3:.2f} (ramp {_STRENGTH_RAMP_EPOCHS} ep)")
         mix_mode = cfg.get('mix_mode', 'both')
         if mix_mode != 'none':
             ramp_str = "ramp enabled" if cfg.get('mix_ramp', False) else "ramp disabled"
             print(f"  Mixing      : {mix_mode}  alpha={cfg.get('mix_alpha', 1.0)}  "
                   f"p={cfg.get('mix_prob', 0.5)}  (Tier 3 only | {ramp_str})")
+        if cfg.get('tier_schedule') == 'lps':
+            print(f"  LPS         : tau={cfg['lps_tau']}  window={cfg['lps_window']}  "
+                  f"min_epochs_per_tier={cfg['lps_min_epochs']}")
     if cfg['augmentation'] == 'static_mixing':
         mix_mode = cfg.get('mix_mode', 'both')
         print(f"  Ops         : all 7 from epoch 1  |  strength {cfg.get('fixed_strength', 0.7)}")
@@ -155,9 +161,22 @@ def main(cfg: dict):
 
     if cfg.get("use_wandb"):
         import wandb
-        wandb.init(project="curriculum-augmentation", name=cfg["experiment_name"], config=cfg)
+        from experiments.upload_to_wandb import get_group_and_label
+        _group, _label = get_group_and_label(cfg["experiment_name"])
+        wandb.init(
+            project = "curriculum-augmentation",
+            name    = cfg["experiment_name"],
+            config  = cfg,
+            group   = _group,
+            tags    = [_group, _label],
+        )
 
     train_transform, val_transform = build_transforms(cfg)
+
+    # LPS manages tier transitions via set_tier(); prevent the transform from
+    # falling back to ETS epoch-boundaries before the first set_tier() call.
+    if cfg.get("tier_schedule") == "lps" and hasattr(train_transform, "set_tier"):
+        train_transform.set_tier(1)
 
     if cfg["dataset"] == "cifar100":
         loader_fn = get_cifar100_loaders
@@ -180,6 +199,17 @@ def main(cfg: dict):
 
     optimizer, _         = build_optimizer(model, cfg)
     scheduler, milestones = build_scheduler(optimizer, cfg)
+
+    # Loss CL
+    lps_scheduler = None
+    if cfg.get("tier_schedule") == "lps":
+        from training.losses import LossPlateauScheduler
+        lps_scheduler = LossPlateauScheduler(
+            tau                 = cfg["lps_tau"],
+            window              = cfg["lps_window"],
+            min_epochs_per_tier = cfg["lps_min_epochs"],
+            higher_is_better    = False,  # tracks val_loss; lower is better
+        )
 
     use_amp = cfg.get("use_amp", False) and device.type == "cuda"
     scaler  = torch.amp.GradScaler("cuda") if use_amp else None
@@ -207,7 +237,7 @@ def main(cfg: dict):
         "val_loss":   [], "val_acc":   [],
         "val_top5":   [],
     }
-    best_val_acc = 0.0
+    best_val_acc = -1.0
     start_epoch  = 1
     start_time   = time.time()
     es_patience  = cfg.get("early_stopping_patience", 0)
@@ -258,8 +288,20 @@ def main(cfg: dict):
         else:
             val_loss, val_acc, val_top5 = 0.0, 0.0, 0.0
 
+        if lps_scheduler is not None:
+            # Track val_loss: less sensitive to LR drops than train loss (val loss can
+            # increase after LR drops due to overfitting), keeps LPS conceptually loss-based.
+            lps_scheduler.update(val_loss)
+            if lps_scheduler.should_advance():
+                new_tier = lps_scheduler.advance(epoch)
+                train_transform.set_tier(new_tier)
+                print(f"  LPS: advancing to Tier {new_tier} at epoch {epoch}")
+
         if scheduler:
             scheduler.step()
+            # When learning rate drops reset loss history
+            if lps_scheduler is not None and epoch in milestones: 
+                lps_scheduler.notify_lr_drop()
 
         history["train_loss"].append(train_loss)
         history["train_acc"].append(train_acc)
@@ -279,6 +321,10 @@ def main(cfg: dict):
         if epoch % cfg["log_every"] == 0 or epoch == 1 or cfg.get("debug"):
             elapsed  = time.time() - start_time
             tier_str = f" | {train_transform.tier_label()}" if hasattr(train_transform, "tier_label") else ""
+            if active_mixer is not None:
+                tier_str += f" + mix:{cfg.get('mix_mode', 'both')}"
+            elif mixer is not None:
+                tier_str += " + mix:pending"
             if use_val:
                 print(
                     f"Epoch [{epoch:>3}/{cfg['epochs']}] "
@@ -329,8 +375,11 @@ def main(cfg: dict):
                 }, ckpt_path)
                 print(f"Checkpoint saved (epoch={epoch}, full-train mode)")
 
-    best_ckpt = torch.load(ckpt_path, map_location=device, weights_only=False)
-    model.load_state_dict(best_ckpt["model_state_dict"])
+    if Path(ckpt_path).exists():
+        best_ckpt = torch.load(ckpt_path, map_location=device, weights_only=False)
+        model.load_state_dict(best_ckpt["model_state_dict"])
+    else:
+        best_ckpt = {"epoch": 0, "val_acc": 0.0, "history": history, "cfg": cfg}
 
     test_loss, test_top1, test_top5 = evaluate(model, test_loader, criterion, device)
     total_time = time.time() - start_time
@@ -370,6 +419,9 @@ def main(cfg: dict):
     print(f"  {'─'*22}  {'─'*10}")
     print(f"  {'Total Time':<22}  {total_time/60:>9.1f} min")
     print(sep)
+    if lps_scheduler is not None and lps_scheduler.tier_change_log:
+        print(f"  LPS Tier transitions: {lps_scheduler.tier_change_log}")                         
+        
 
     if cfg.get("use_wandb"):
         import wandb
@@ -428,6 +480,12 @@ def parse_args():
                         help="Probability of mixing a batch in Tier 3 (default: 0.5)")
     parser.add_argument("--mix_ramp",        action="store_true",  default=False,
                         help="Gradually ramp mixing p and alpha over first 5 epochs of Tier 3 (default: disabled)")
+    parser.add_argument("--lps_tau",         type=float, default=None,
+                        help="LPS: plateau threshold — min relative improvement to stay in tier (default: 0.02)")
+    parser.add_argument("--lps_window",      type=int,   default=None,
+                        help="LPS: epochs lookback window for plateau detection (default: 5)")
+    parser.add_argument("--lps_min_epochs",  type=int,   default=None,
+                        help="LPS: minimum epochs per tier before advancing (default: 10)")
     parser.add_argument("--seed",            type=int,   default=None,
                         help="Random seed for reproducibility (default: 42)")
 
@@ -443,7 +501,8 @@ if __name__ == "__main__":
                 "experiment_name", "checkpoint_dir", "resume",
                 "val_split", "early_stopping_patience", "fixed_strength",
                 "tier_schedule", "tier_t1", "tier_t2",
-                "mix_mode", "mix_alpha", "mix_prob", "mix_ramp", "seed"]:
+                "mix_mode", "mix_alpha", "mix_prob", "mix_ramp",
+                "lps_tau", "lps_window", "lps_min_epochs", "seed"]:
         val = getattr(args, key, None)
         if val is not None:
             cfg[key] = val
