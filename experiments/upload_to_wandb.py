@@ -38,6 +38,7 @@ GROUP_RULES = [
     ("_lps_nomix_",         "M",       "LPS No Mix"),
     ("_lps_",               "A_LPS",   "LPS Ablation"),
     ("_ets_",               "A_ETS",   "ETS Ablation"),
+    ("cl_strength",         "A_CL",    "CL Strength Ablation"),
 ]
 
 
@@ -114,8 +115,8 @@ def upload_run(history_path: Path, project: str):
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--run",     type=str, default=None,
-                        help="Specific run name to upload (without _history.pt)")
+    parser.add_argument("--run",     type=str, nargs="+", default=None,
+                        help="One or more run names to upload (without _history.pt)")
     parser.add_argument("--project", type=str, default=DEFAULT_PROJECT,
                         help=f"W&B project name (default: {DEFAULT_PROJECT})")
     parser.add_argument("--dir",     type=str, default=str(CHECKPOINT_DIR),
@@ -124,7 +125,7 @@ def main():
 
     ckpt_dir = Path(args.dir)
     if args.run:
-        history_files = [ckpt_dir / f"{args.run}_history.pt"]
+        history_files = [ckpt_dir / f"{name}_history.pt" for name in args.run]
     else:
         history_files = sorted(ckpt_dir.glob("*_history.pt"))
 
