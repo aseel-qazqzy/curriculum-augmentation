@@ -15,11 +15,11 @@ Available models:
 """
 
 import torch.nn as nn
-import models.baseline_cnn      as custom_cnn
+import models.baseline_cnn as custom_cnn
 import models.baseline_resnet18 as resnet18_mod
 import models.baseline_resnet50 as resnet50_mod
-import models.wideresnet        as wrn_mod
-import models.pyramidnet        as pyramid_mod
+import models.wideresnet as wrn_mod
+import models.pyramidnet as pyramid_mod
 
 
 def get_model(name: str, num_classes: int = 10) -> nn.Module:

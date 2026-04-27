@@ -47,7 +47,9 @@ class ResNet50Baseline(nn.Module):
         return self.backbone(x)
 
 
-def get_baseline_model(num_classes: int = 100, dropout_rate: float = 0.0) -> ResNet50Baseline:
+def get_baseline_model(
+    num_classes: int = 100, dropout_rate: float = 0.0
+) -> ResNet50Baseline:
     return ResNet50Baseline(num_classes=num_classes, dropout_rate=dropout_rate)
 
 

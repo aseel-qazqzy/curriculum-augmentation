@@ -18,27 +18,27 @@ DEFAULT_PROJECT = "curriculum-augmentation"
 
 # Maps run name keywords → experiment group tag
 GROUP_RULES = [
-    ("_none_",              "B",       "No Augmentation"),
-    ("_static_sgd",         "B",       "Static Aug"),
-    ("_static_mixing_",     "B",       "Static + Mixing"),
-    ("_random_",            "B",       "Random Aug"),
-    ("_randaugment_",       "B",       "RandAugment"),
-    ("flip_crop",           "B_COMBO", "Manual Pipeline"),
-    ("autoaugment",         "B_PAPER", "AutoAugment"),
-    ("trivialaugment",      "B_PAPER", "TrivialAugment"),
-    ("augmix",              "B_PAPER", "AugMix"),
-    ("madaug",              "B_PAPER", "MADAug"),
-    ("_ets_mix_both_",      "M",       "ETS + Both Mixing"),
-    ("_ets_mix_cutmix_",    "M",       "ETS + CutMix"),
-    ("_ets_mix_mixup_",     "M",       "ETS + MixUp"),
-    ("_ets_nomix_",         "M",       "ETS No Mix"),
-    ("_lps_mix_both_",      "M",       "LPS + Both Mixing"),
-    ("_lps_mix_cutmix_",    "M",       "LPS + CutMix"),
-    ("_lps_mix_mixup_",     "M",       "LPS + MixUp"),
-    ("_lps_nomix_",         "M",       "LPS No Mix"),
-    ("_lps_",               "A_LPS",   "LPS Ablation"),
-    ("_ets_",               "A_ETS",   "ETS Ablation"),
-    ("cl_strength",         "A_CL",    "CL Strength Ablation"),
+    ("_none_", "B", "No Augmentation"),
+    ("_static_sgd", "B", "Static Aug"),
+    ("_static_mixing_", "B", "Static + Mixing"),
+    ("_random_", "B", "Random Aug"),
+    ("_randaugment_", "B", "RandAugment"),
+    ("flip_crop", "B_COMBO", "Manual Pipeline"),
+    ("autoaugment", "B_PAPER", "AutoAugment"),
+    ("trivialaugment", "B_PAPER", "TrivialAugment"),
+    ("augmix", "B_PAPER", "AugMix"),
+    ("madaug", "B_PAPER", "MADAug"),
+    ("_ets_mix_both_", "M", "ETS + Both Mixing"),
+    ("_ets_mix_cutmix_", "M", "ETS + CutMix"),
+    ("_ets_mix_mixup_", "M", "ETS + MixUp"),
+    ("_ets_nomix_", "M", "ETS No Mix"),
+    ("_lps_mix_both_", "M", "LPS + Both Mixing"),
+    ("_lps_mix_cutmix_", "M", "LPS + CutMix"),
+    ("_lps_mix_mixup_", "M", "LPS + MixUp"),
+    ("_lps_nomix_", "M", "LPS No Mix"),
+    ("_lps_", "A_LPS", "LPS Ablation"),
+    ("_ets_", "A_ETS", "ETS Ablation"),
+    ("cl_strength", "A_CL", "CL Strength Ablation"),
 ]
 
 
@@ -53,7 +53,11 @@ def get_group_and_label(run_name: str):
 def upload_run(history_path: Path, project: str):
     ckpt_path = Path(str(history_path).replace("_history.pt", "_best.pth"))
 
-    ckpt    = torch.load(ckpt_path, map_location="cpu", weights_only=False) if ckpt_path.exists() else {}
+    ckpt = (
+        torch.load(ckpt_path, map_location="cpu", weights_only=False)
+        if ckpt_path.exists()
+        else {}
+    )
     history = torch.load(history_path, map_location="cpu", weights_only=False)
 
     # handle both formats: history stored standalone or inside checkpoint
@@ -65,9 +69,9 @@ def upload_run(history_path: Path, project: str):
         print(f"  Skipping {history_path.name} — empty history")
         return
 
-    run_name        = history_path.stem.replace("_history", "")
-    cfg             = dict(ckpt.get("cfg", {}))
-    group, label    = get_group_and_label(run_name)
+    run_name = history_path.stem.replace("_history", "")
+    cfg = dict(ckpt.get("cfg", {}))
+    group, label = get_group_and_label(run_name)
 
     # inject scheduler tag so LPS vs ETS is visible in W&B config
     name_lower = run_name.lower()
@@ -83,26 +87,26 @@ def upload_run(history_path: Path, project: str):
     print(f"  Uploading: {run_name}  ({n_epochs} epochs)  [{group}]")
 
     wandb.init(
-        project   = project,
-        name      = run_name,
-        config    = cfg,
-        group     = group,
-        tags      = [group, label],
-        reinit    = True,
+        project=project,
+        name=run_name,
+        config=cfg,
+        group=group,
+        tags=[group, label],
+        reinit=True,
     )
 
-    has_val   = len(history.get("val_loss", [])) == n_epochs
-    has_top5  = len(history.get("val_top5", [])) == n_epochs
+    has_val = len(history.get("val_loss", [])) == n_epochs
+    has_top5 = len(history.get("val_top5", [])) == n_epochs
 
     for epoch in range(n_epochs):
         log = {
-            "epoch":      epoch + 1,
+            "epoch": epoch + 1,
             "train_loss": history["train_loss"][epoch],
-            "train_acc":  history["train_acc"][epoch] * 100,
+            "train_acc": history["train_acc"][epoch] * 100,
         }
         if has_val:
             log["val_loss"] = history["val_loss"][epoch]
-            log["val_acc"]  = history["val_acc"][epoch] * 100
+            log["val_acc"] = history["val_acc"][epoch] * 100
         if has_top5:
             log["val_top5"] = history["val_top5"][epoch] * 100
 
@@ -115,28 +119,40 @@ def upload_run(history_path: Path, project: str):
 
     # log final summary metrics
     summary = {
-        "best_val_acc":  ckpt.get("val_acc", 0) * 100,
-        "test_top1":     test_top1,
-        "test_top5":     test_top5,
-        "best_epoch":    ckpt.get("epoch", 0),
+        "best_val_acc": ckpt.get("val_acc", 0) * 100,
+        "test_top1": test_top1,
+        "test_top5": test_top5,
+        "best_epoch": ckpt.get("epoch", 0),
         "total_minutes": ckpt.get("total_minutes", 0),
     }
     for k, v in summary.items():
         wandb.run.summary[k] = v
 
     wandb.finish()
-    print(f"    best_val={summary['best_val_acc']:.2f}%  "
-          f"test={summary['test_top1']:.2f}%  done ✓")
+    print(
+        f"    best_val={summary['best_val_acc']:.2f}%  "
+        f"test={summary['test_top1']:.2f}%  done ✓"
+    )
 
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--run",     type=str, nargs="+", default=None,
-                        help="One or more run names to upload (without _history.pt)")
-    parser.add_argument("--project", type=str, default=DEFAULT_PROJECT,
-                        help=f"W&B project name (default: {DEFAULT_PROJECT})")
-    parser.add_argument("--dir",     type=str, default=str(CHECKPOINT_DIR),
-                        help="Checkpoint directory")
+    parser.add_argument(
+        "--run",
+        type=str,
+        nargs="+",
+        default=None,
+        help="One or more run names to upload (without _history.pt)",
+    )
+    parser.add_argument(
+        "--project",
+        type=str,
+        default=DEFAULT_PROJECT,
+        help=f"W&B project name (default: {DEFAULT_PROJECT})",
+    )
+    parser.add_argument(
+        "--dir", type=str, default=str(CHECKPOINT_DIR), help="Checkpoint directory"
+    )
     args = parser.parse_args()
 
     ckpt_dir = Path(args.dir)

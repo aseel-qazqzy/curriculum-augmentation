@@ -15,6 +15,7 @@ from pathlib import Path
 
 try:
     import torch
+
     HAVE_TORCH = True
 except ImportError:
     HAVE_TORCH = False
@@ -24,47 +25,49 @@ _PROJECT_ROOT = Path(__file__).resolve().parent.parent
 sys.path.append(str(_PROJECT_ROOT))
 
 CHECKPOINT_DIR = str(_PROJECT_ROOT / "checkpoints")
-FIGURES_DIR    = str(_PROJECT_ROOT / "results" / "figures")
+FIGURES_DIR = str(_PROJECT_ROOT / "results" / "figures")
 os.makedirs(FIGURES_DIR, exist_ok=True)
 
 # PALETTE — colorblind-friendly (Wong 2011, Nature Methods)
 PALETTE = {
-    "no_aug": "#999999",   # neutral gray
-    "static": "#0072B2",   # blue
-    "cl":     "#009E73",   # green
-    "cosine": "#E69F00",   # orange
-    "adam":   "#CC79A7",   # pink
+    "no_aug": "#999999",  # neutral gray
+    "static": "#0072B2",  # blue
+    "cl": "#009E73",  # green
+    "cosine": "#E69F00",  # orange
+    "adam": "#CC79A7",  # pink
 }
 
 # Research paper style — clean, minimal, publication-ready
-plt.rcParams.update({
-    "figure.facecolor":   "white",
-    "axes.facecolor":     "white",
-    "axes.edgecolor":     "black",
-    "axes.linewidth":     0.8,
-    "axes.spines.top":    False,
-    "axes.spines.right":  False,
-    "axes.grid":          True,
-    "axes.axisbelow":     True,
-    "grid.color":         "#DDDDDD",
-    "grid.linewidth":     0.6,
-    "grid.linestyle":     "--",
-    "font.family":        "DejaVu Sans",
-    "font.size":          9,
-    "axes.titlesize":     10,
-    "axes.titleweight":   "bold",
-    "axes.labelsize":     9,
-    "axes.titlepad":      8,
-    "xtick.labelsize":    8,
-    "ytick.labelsize":    8,
-    "legend.fontsize":    8,
-    "legend.framealpha":  1.0,
-    "legend.edgecolor":   "black",
-    "legend.fancybox":    False,
-    "savefig.dpi":        300,
-    "savefig.bbox":       "tight",
-    "savefig.facecolor":  "white",
-})
+plt.rcParams.update(
+    {
+        "figure.facecolor": "white",
+        "axes.facecolor": "white",
+        "axes.edgecolor": "black",
+        "axes.linewidth": 0.8,
+        "axes.spines.top": False,
+        "axes.spines.right": False,
+        "axes.grid": True,
+        "axes.axisbelow": True,
+        "grid.color": "#DDDDDD",
+        "grid.linewidth": 0.6,
+        "grid.linestyle": "--",
+        "font.family": "DejaVu Sans",
+        "font.size": 9,
+        "axes.titlesize": 10,
+        "axes.titleweight": "bold",
+        "axes.labelsize": 9,
+        "axes.titlepad": 8,
+        "xtick.labelsize": 8,
+        "ytick.labelsize": 8,
+        "legend.fontsize": 8,
+        "legend.framealpha": 1.0,
+        "legend.edgecolor": "black",
+        "legend.fancybox": False,
+        "savefig.dpi": 300,
+        "savefig.bbox": "tight",
+        "savefig.facecolor": "white",
+    }
+)
 
 
 # LOAD
@@ -77,6 +80,7 @@ def _merge_histories(parts):
             if k in p:
                 merged[k].extend(p[k])
     return merged
+
 
 def load_history(name, checkpoint_dir=CHECKPOINT_DIR):
     """
@@ -121,23 +125,25 @@ def load_history(name, checkpoint_dir=CHECKPOINT_DIR):
 
     if len(parts) == 1:
         path, h = parts[0]
-        print(f" {os.path.basename(path):<52}  best={max(h['val_acc'])*100:.2f}%")
+        print(f" {os.path.basename(path):<52}  best={max(h['val_acc']) * 100:.2f}%")
         return h
 
     ep_counts = " + ".join(str(len(h["val_acc"])) for _, h in parts)
     merged = _merge_histories([h for _, h in parts])
-    print(f" {name}  — auto-merged {len(parts)} parts  "
-          f"({ep_counts} ep  ->  {len(merged['val_acc'])} total  "
-          f"best={max(merged['val_acc'])*100:.2f}%)")
+    print(
+        f" {name}  — auto-merged {len(parts)} parts  "
+        f"({ep_counts} ep  ->  {len(merged['val_acc'])} total  "
+        f"best={max(merged['val_acc']) * 100:.2f}%)"
+    )
     for path, h in parts:
         print(f"   [{len(h['val_acc']):>3} ep]  {os.path.basename(path)}")
     return merged
+
 
 def best(h):
     arr = np.array(h["val_acc"])
     idx = int(np.argmax(arr))
     return idx + 1, float(arr[idx]) * 100
-
 
 
 # ALL EXPERIMENTS REGISTRY
@@ -149,37 +155,54 @@ def best(h):
 EXPERIMENTS = [
     # (display_label,                   checkpoint_base_name,                       color,             group)
     # ── CIFAR-100 | ResNet-50 | FIT comparison ──────────────────────────────────────────────────────────────
-    ("No Augmentation (floor)",         "resnet50_no_aug_cifar100_v2_cifar100",      PALETTE["no_aug"], "floor"),
-    ("Static Aug (all ops, epoch 1)",   "resnet50_static_aug_cifar100_v2_cifar100",  PALETTE["static"], "baseline"),
-    ("Tiered CL (3-tier progressive)",  "resnet50_tiered_curriculum_cifar100",       PALETTE["cl"],     "cl"),
+    (
+        "No Augmentation (floor)",
+        "resnet50_no_aug_cifar100_v2_cifar100",
+        PALETTE["no_aug"],
+        "floor",
+    ),
+    (
+        "Static Aug (all ops, epoch 1)",
+        "resnet50_static_aug_cifar100_v2_cifar100",
+        PALETTE["static"],
+        "baseline",
+    ),
+    (
+        "Tiered CL (3-tier progressive)",
+        "resnet50_tiered_curriculum_cifar100",
+        PALETTE["cl"],
+        "cl",
+    ),
 ]
 
 
 # FIGURE — research paper quality grouped bar chart
 def fig_comparison(rows, fname="fig_compare_methods.png"):
-    valid  = [r for r in rows if r["h"] is not None]
+    valid = [r for r in rows if r["h"] is not None]
     colors = [r["color"] for r in valid]
     labels = [r["label"] for r in valid]
-    vals   = [r["val_b"]   for r in valid]
-    tests  = [r["test_acc"] if r["test_acc"] else r["val_b"] for r in valid]
-    gaps   = [r["gap"]     for r in valid]
+    vals = [r["val_b"] for r in valid]
+    tests = [r["test_acc"] if r["test_acc"] else r["val_b"] for r in valid]
+    gaps = [r["gap"] for r in valid]
 
     # Short x-tick labels
-    short = ["No Aug", "Static Aug", "Tiered CL"][:len(valid)]
+    short = ["No Aug", "Static Aug", "Tiered CL"][: len(valid)]
 
-    x     = np.arange(len(valid))
+    x = np.arange(len(valid))
     width = 0.55
 
     fig, axes = plt.subplots(1, 2, figsize=(7, 3.2))
     fig.suptitle(
         "CIFAR-100  ·  ResNet-50  ·  100 epochs  ·  SGD",
-        fontsize=9, fontweight="bold",
+        fontsize=9,
+        fontweight="bold",
     )
 
     # ── (a) Test Top-1 Accuracy ──────────────────────────────────
     ax = axes[0]
-    bars = ax.bar(x, tests, width=width, color=colors,
-                  edgecolor="black", linewidth=0.6, zorder=3)
+    bars = ax.bar(
+        x, tests, width=width, color=colors, edgecolor="black", linewidth=0.6, zorder=3
+    )
     ax.set_xticks(x)
     ax.set_xticklabels(short)
     ax.set_ylabel("Test Top-1 Accuracy (%)")
@@ -189,15 +212,21 @@ def fig_comparison(rows, fname="fig_compare_methods.png"):
     ax.set_ylim(ymin, ymax)
     ax.yaxis.set_major_locator(MultipleLocator(5))
     for bar, val in zip(bars, tests):
-        ax.text(bar.get_x() + bar.get_width() / 2,
-                bar.get_height() + 0.5,
-                f"{val:.2f}%", ha="center", va="bottom",
-                fontsize=7.5, fontweight="bold")
+        ax.text(
+            bar.get_x() + bar.get_width() / 2,
+            bar.get_height() + 0.5,
+            f"{val:.2f}%",
+            ha="center",
+            va="bottom",
+            fontsize=7.5,
+            fontweight="bold",
+        )
 
     # ── (b) Train − Val Generalization Gap ──────────────────────
     ax = axes[1]
-    bars2 = ax.bar(x, gaps, width=width, color=colors,
-                   edgecolor="black", linewidth=0.6, zorder=3)
+    bars2 = ax.bar(
+        x, gaps, width=width, color=colors, edgecolor="black", linewidth=0.6, zorder=3
+    )
     ax.set_xticks(x)
     ax.set_xticklabels(short)
     ax.set_ylabel("Train − Val Gap (pp)  ↓ lower is better")
@@ -205,10 +234,15 @@ def fig_comparison(rows, fname="fig_compare_methods.png"):
     ax.set_ylim(0, max(gaps) + 8)
     ax.yaxis.set_major_locator(MultipleLocator(10))
     for bar, val in zip(bars2, gaps):
-        ax.text(bar.get_x() + bar.get_width() / 2,
-                bar.get_height() + 0.5,
-                f"{val:.1f}", ha="center", va="bottom",
-                fontsize=7.5, fontweight="bold")
+        ax.text(
+            bar.get_x() + bar.get_width() / 2,
+            bar.get_height() + 0.5,
+            f"{val:.1f}",
+            ha="center",
+            va="bottom",
+            fontsize=7.5,
+            fontweight="bold",
+        )
 
     plt.tight_layout()
     path = os.path.join(FIGURES_DIR, fname)
@@ -220,12 +254,16 @@ def fig_comparison(rows, fname="fig_compare_methods.png"):
 # FINAL RESULTS TABLE
 def print_final_table(rows):
     W = 88
-    print(f"\n{'═'*W}")
+    print(f"\n{'═' * W}")
     print("  FINAL RESULTS TABLE — All Experiments")
     print("  CIFAR-100  ·  ResNet-50  ·  SGD  ·  seed=42  ·  100 epochs")
-    print(f"{'═'*W}\n")
+    print(f"{'═' * W}\n")
 
-    groups = {"floor": "FLOOR (NO AUGMENTATION)", "baseline": "BASELINE", "cl": "CURRICULUM LEARNING (PROPOSED)"}
+    groups = {
+        "floor": "FLOOR (NO AUGMENTATION)",
+        "baseline": "BASELINE",
+        "cl": "CURRICULUM LEARNING (PROPOSED)",
+    }
     current_group = None
 
     for r in rows:
@@ -234,9 +272,13 @@ def print_final_table(rows):
 
         if r["group"] != current_group:
             current_group = r["group"]
-            print(f"  ── {groups[current_group]} {'─'*(W-8-len(groups[current_group]))}")
-            print(f"  {'Method':<42} {'BestVal':>8} {'TestAcc':>8} {'@Ep':>5} "
-                  f"{'TrainAcc':>9} {'Gap':>7} {'ValLoss':>8}")
+            print(
+                f"  ── {groups[current_group]} {'─' * (W - 8 - len(groups[current_group]))}"
+            )
+            print(
+                f"  {'Method':<42} {'BestVal':>8} {'TestAcc':>8} {'@Ep':>5} "
+                f"{'TrainAcc':>9} {'Gap':>7} {'ValLoss':>8}"
+            )
             print("  " + "─" * (W - 2))
 
         tag = ""
@@ -246,25 +288,31 @@ def print_final_table(rows):
             tag = "  ◄ YOUR METHOD ★"
 
         test_str = f"{r['test_acc']:.2f}%" if r["test_acc"] else "  —   "
-        print(f"  {r['label']:<42} {r['val_b']:>7.2f}%  {test_str:>8}  "
-              f"{r['ep_b']:>4}  {r['ft']:>8.2f}%  {r['gap']:>6.1f}%  "
-              f"{r['val_loss']:>7.4f}{tag}")
+        print(
+            f"  {r['label']:<42} {r['val_b']:>7.2f}%  {test_str:>8}  "
+            f"{r['ep_b']:>4}  {r['ft']:>8.2f}%  {r['gap']:>6.1f}%  "
+            f"{r['val_loss']:>7.4f}{tag}"
+        )
 
-    print(f"\n{'═'*W}")
+    print(f"\n{'═' * W}")
     print("  Gap     = Final Train Acc − Best Val Acc")
     print("  ValLoss = Val loss at best epoch")
     print("  TestAcc = Reported only after final evaluation on test set")
-    print(f"{'═'*W}")
+    print(f"{'═' * W}")
 
     # ── Improvement summary ──────────────────────────────────
-    no_aug = next((r for r in rows if r["group"] == "floor" and r["h"] is not None), None)
-    bl     = next((r for r in rows if r["group"] == "baseline" and r["h"] is not None), None)
-    cl     = next((r for r in rows if r["group"] == "cl" and r["h"] is not None), None)
+    no_aug = next(
+        (r for r in rows if r["group"] == "floor" and r["h"] is not None), None
+    )
+    bl = next(
+        (r for r in rows if r["group"] == "baseline" and r["h"] is not None), None
+    )
+    cl = next((r for r in rows if r["group"] == "cl" and r["h"] is not None), None)
 
     if bl and cl:
-        dv  = cl["val_b"] - bl["val_b"]
-        dg  = bl["gap"]   - cl["gap"]
-        sv  = "+" if dv >= 0 else ""
+        dv = cl["val_b"] - bl["val_b"]
+        dg = bl["gap"] - cl["gap"]
+        sv = "+" if dv >= 0 else ""
         print("\n  THESIS CLAIM:")
         print("  Tiered CL vs Static Augmentation:")
         print(f"    Δ Val Accuracy   : {sv}{dv:.2f}%")
@@ -279,8 +327,7 @@ def print_final_table(rows):
         cl_gain = cl["val_b"] - no_aug["val_b"]
         print(f"  Curriculum benefit (CL vs No Aug)      : +{cl_gain:.2f}%")
 
-    print(f"{'═'*W}\n")
-
+    print(f"{'═' * W}\n")
 
 
 # MAIN
@@ -292,8 +339,8 @@ def main(checkpoint_dir=CHECKPOINT_DIR):
         h = load_history(name, checkpoint_dir)
         if h is not None:
             ep_b, val_b = best(h)
-            ft      = h["train_acc"][-1] * 100
-            gap     = ft - val_b
+            ft = h["train_acc"][-1] * 100
+            gap = ft - val_b
             val_loss = h["val_loss"][ep_b - 1]
             # Load test acc from checkpoint if available
             test_acc = None
@@ -310,9 +357,20 @@ def main(checkpoint_dir=CHECKPOINT_DIR):
             ep_b = val_b = ft = gap = val_loss = 0
             test_acc = None
 
-        rows.append(dict(label=label, h=h, color=color, group=group,
-                         ep_b=ep_b, val_b=val_b, ft=ft, gap=gap,
-                         val_loss=val_loss, test_acc=test_acc))
+        rows.append(
+            dict(
+                label=label,
+                h=h,
+                color=color,
+                group=group,
+                ep_b=ep_b,
+                val_b=val_b,
+                ft=ft,
+                gap=gap,
+                val_loss=val_loss,
+                test_acc=test_acc,
+            )
+        )
 
     print("\n📈  Generating comparison figure...")
     fig_comparison(rows)
@@ -321,6 +379,7 @@ def main(checkpoint_dir=CHECKPOINT_DIR):
 
 if __name__ == "__main__":
     import argparse
+
     parser = argparse.ArgumentParser()
     parser.add_argument("--checkpoint_dir", default=CHECKPOINT_DIR)
     args = parser.parse_args()

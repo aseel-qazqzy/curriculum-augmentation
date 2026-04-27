@@ -21,41 +21,46 @@ sys.path.append(str(Path(__file__).resolve().parent.parent))
 FIGURES_DIR = "./results/figures"
 os.makedirs(FIGURES_DIR, exist_ok=True)
 
-plt.rcParams.update({
-    "figure.facecolor":  "white",
-    "axes.facecolor":    "#FAFAFA",
-    "axes.edgecolor":    "#CCCCCC",
-    "axes.linewidth":    1.0,
-    "axes.spines.top":   False,
-    "axes.spines.right": False,
-    "axes.grid":         True,
-    "grid.color":        "#E0E0E0",
-    "grid.linewidth":    0.7,
-    "font.family":       "DejaVu Sans",
-    "font.size":         11,
-    "axes.titlesize":    13,
-    "axes.titleweight":  "bold",
-    "axes.titlepad":     12,
-    "legend.fontsize":   10,
-    "legend.framealpha": 0.95,
-    "legend.edgecolor":  "#CCCCCC",
-    "savefig.dpi":       300,
-    "savefig.bbox":      "tight",
-    "savefig.facecolor": "white",
-})
+plt.rcParams.update(
+    {
+        "figure.facecolor": "white",
+        "axes.facecolor": "#FAFAFA",
+        "axes.edgecolor": "#CCCCCC",
+        "axes.linewidth": 1.0,
+        "axes.spines.top": False,
+        "axes.spines.right": False,
+        "axes.grid": True,
+        "grid.color": "#E0E0E0",
+        "grid.linewidth": 0.7,
+        "font.family": "DejaVu Sans",
+        "font.size": 11,
+        "axes.titlesize": 13,
+        "axes.titleweight": "bold",
+        "axes.titlepad": 12,
+        "legend.fontsize": 10,
+        "legend.framealpha": 0.95,
+        "legend.edgecolor": "#CCCCCC",
+        "savefig.dpi": 300,
+        "savefig.bbox": "tight",
+        "savefig.facecolor": "white",
+    }
+)
 
 PALETTE = {
-    "static":  "#1F77B4",
-    "cl":      "#2CA02C",
-    "easy":    "#A8D5A2",
-    "medium":  "#F9C74F",
-    "hard":    "#F3722C",
-    "lr":      "#D62728",
+    "static": "#1F77B4",
+    "cl": "#2CA02C",
+    "easy": "#A8D5A2",
+    "medium": "#F9C74F",
+    "hard": "#F3722C",
+    "lr": "#D62728",
 }
 
-N_EPOCHS   = 150
-MILESTONES = [int(N_EPOCHS * 0.33), int(N_EPOCHS * 0.66), int(N_EPOCHS * 0.83)]  # [49, 99, 124]
-
+N_EPOCHS = 150
+MILESTONES = [
+    int(N_EPOCHS * 0.33),
+    int(N_EPOCHS * 0.66),
+    int(N_EPOCHS * 0.83),
+]  # [49, 99, 124]
 
 
 # CURRICULUM SCHEDULES
@@ -74,9 +79,12 @@ def linear_difficulty(epoch, n=N_EPOCHS):
 
 
 def step_difficulty(epoch, n=N_EPOCHS):
-    if epoch < int(n * 0.33): return 0.0
-    if epoch < int(n * 0.66): return 0.33
-    if epoch < int(n * 0.83): return 0.66
+    if epoch < int(n * 0.33):
+        return 0.0
+    if epoch < int(n * 0.66):
+        return 0.33
+    if epoch < int(n * 0.83):
+        return 0.66
     return 1.0
 
 
@@ -94,12 +102,11 @@ def aug_params_over_time(epochs):
 
     return {
         "ColorJitter brightness": 0.1 + 0.5 * diff,
-        "ColorJitter contrast":   0.05 + 0.3 * diff,
-        "RandomCrop padding":     1  + 3   * diff,    # 1 → 4
-        "Rotation (°)":           0  + 15  * diff,
-        "Cutout probability":     0  + 0.5 * diff,
+        "ColorJitter contrast": 0.05 + 0.3 * diff,
+        "RandomCrop padding": 1 + 3 * diff,  # 1 → 4
+        "Rotation (°)": 0 + 15 * diff,
+        "Cutout probability": 0 + 0.5 * diff,
     }
-
 
 
 # FIGURE 1 — Schedule comparison
@@ -108,23 +115,44 @@ def fig_schedule_comparison(fname="figS1_schedule_comparison.png"):
     fig, axes = plt.subplots(1, 2, figsize=(14, 5))
     fig.suptitle(
         "Curriculum Learning Schedule Comparison — CIFAR-10",
-        fontsize=13, fontweight="bold", y=1.01,
+        fontsize=13,
+        fontweight="bold",
+        y=1.01,
     )
 
     schedules = {
-        "Loss-Guided (ours)": ([loss_guided_difficulty(e) for e in epochs], PALETTE["cl"],     "-",  2.8),
-        "Linear":             ([linear_difficulty(e)      for e in epochs], PALETTE["static"], "--", 1.8),
-        "Step":               ([step_difficulty(e)        for e in epochs], PALETTE["lr"],     ":",  1.8),
-        "Static (baseline)":  ([static_difficulty(e)      for e in epochs], "#888888",         "-.", 1.8),
+        "Loss-Guided (ours)": (
+            [loss_guided_difficulty(e) for e in epochs],
+            PALETTE["cl"],
+            "-",
+            2.8,
+        ),
+        "Linear": (
+            [linear_difficulty(e) for e in epochs],
+            PALETTE["static"],
+            "--",
+            1.8,
+        ),
+        "Step": ([step_difficulty(e) for e in epochs], PALETTE["lr"], ":", 1.8),
+        "Static (baseline)": (
+            [static_difficulty(e) for e in epochs],
+            "#888888",
+            "-.",
+            1.8,
+        ),
     }
 
     for label, (vals, color, ls, lw) in schedules.items():
         axes[0].plot(epochs, vals, color=color, lw=lw, ls=ls, label=label)
 
     # Shade phases
-    axes[0].axvspan(1,              MILESTONES[0], alpha=0.06, color=PALETTE["easy"],   label="_")
-    axes[0].axvspan(MILESTONES[0],  MILESTONES[1], alpha=0.06, color=PALETTE["medium"], label="_")
-    axes[0].axvspan(MILESTONES[1],  N_EPOCHS,      alpha=0.06, color=PALETTE["hard"],   label="_")
+    axes[0].axvspan(1, MILESTONES[0], alpha=0.06, color=PALETTE["easy"], label="_")
+    axes[0].axvspan(
+        MILESTONES[0], MILESTONES[1], alpha=0.06, color=PALETTE["medium"], label="_"
+    )
+    axes[0].axvspan(
+        MILESTONES[1], N_EPOCHS, alpha=0.06, color=PALETTE["hard"], label="_"
+    )
 
     for m in MILESTONES:
         axes[0].axvline(m, color="#888888", lw=1.0, ls=":", alpha=0.4)
@@ -150,15 +178,22 @@ def fig_schedule_comparison(fname="figS1_schedule_comparison.png"):
 
     # Phase labels on both axes
     phase_labels = [
-        (1,             MILESTONES[0], "Easy",   PALETTE["easy"]),
+        (1, MILESTONES[0], "Easy", PALETTE["easy"]),
         (MILESTONES[0], MILESTONES[1], "Medium", PALETTE["medium"]),
-        (MILESTONES[1], N_EPOCHS,      "Hard",   PALETTE["hard"]),
+        (MILESTONES[1], N_EPOCHS, "Hard", PALETTE["hard"]),
     ]
     for ax in axes:
         for start, end, label, color in phase_labels:
-            ax.text((start + end) / 2, 1.06, label,
-                    ha="center", va="bottom", fontsize=8,
-                    color=color, fontweight="bold")
+            ax.text(
+                (start + end) / 2,
+                1.06,
+                label,
+                ha="center",
+                va="bottom",
+                fontsize=8,
+                color=color,
+                fontweight="bold",
+            )
 
     plt.tight_layout()
     path = os.path.join(FIGURES_DIR, fname)
@@ -177,7 +212,9 @@ def fig_aug_params(fname="figS2_aug_params.png"):
     fig, axes = plt.subplots(1, 2, figsize=(14, 5))
     fig.suptitle(
         "Augmentation Parameter Progression — Loss-Guided CL Schedule",
-        fontsize=13, fontweight="bold", y=1.01,
+        fontsize=13,
+        fontweight="bold",
+        y=1.01,
     )
 
     # Left: all params overlaid (normalised 0-1)
@@ -200,12 +237,29 @@ def fig_aug_params(fname="figS2_aug_params.png"):
     ax2 = axes[1]
     ax3 = ax2.twinx()
 
-    ax2.plot(epochs, params["ColorJitter brightness"], color="#1F77B4", lw=2.2,
-             label="ColorJitter brightness (left)")
-    ax2.plot(epochs, params["Cutout probability"],    color="#2CA02C", lw=2.2,
-             ls="--", label="Cutout probability (left)")
-    ax3.plot(epochs, params["Rotation (°)"],          color="#D62728", lw=2.2,
-             ls=":", label="Rotation ° (right)")
+    ax2.plot(
+        epochs,
+        params["ColorJitter brightness"],
+        color="#1F77B4",
+        lw=2.2,
+        label="ColorJitter brightness (left)",
+    )
+    ax2.plot(
+        epochs,
+        params["Cutout probability"],
+        color="#2CA02C",
+        lw=2.2,
+        ls="--",
+        label="Cutout probability (left)",
+    )
+    ax3.plot(
+        epochs,
+        params["Rotation (°)"],
+        color="#D62728",
+        lw=2.2,
+        ls=":",
+        label="Rotation ° (right)",
+    )
 
     for m in MILESTONES:
         ax2.axvline(m, color="#888888", lw=1.0, ls=":", alpha=0.4)
@@ -245,48 +299,64 @@ def fig_lr_and_difficulty(fname="figS3_lr_difficulty_combined.png"):
     fig, ax1 = plt.subplots(figsize=(13, 5))
     fig.suptitle(
         "Learning Rate & CL Difficulty Schedule — Combined View  ·  MultiStepLR + Loss-Guided CL",
-        fontsize=13, fontweight="bold",
+        fontsize=13,
+        fontweight="bold",
     )
 
     ax2 = ax1.twinx()
 
-    ax1.plot(epochs, lr,   color=PALETTE["lr"],     lw=2.5, label="Learning Rate (left)")
-    ax2.plot(epochs, diff, color=PALETTE["cl"],     lw=2.5, label="CL Difficulty (right)")
+    ax1.plot(epochs, lr, color=PALETTE["lr"], lw=2.5, label="Learning Rate (left)")
+    ax2.plot(epochs, diff, color=PALETTE["cl"], lw=2.5, label="CL Difficulty (right)")
     ax2.fill_between(epochs, 0, diff, alpha=0.08, color=PALETTE["cl"])
 
     # Phase shading
-    ax1.axvspan(1,              MILESTONES[0], alpha=0.05, color=PALETTE["easy"])
-    ax1.axvspan(MILESTONES[0],  MILESTONES[1], alpha=0.05, color=PALETTE["medium"])
-    ax1.axvspan(MILESTONES[1],  N_EPOCHS,      alpha=0.05, color=PALETTE["hard"])
+    ax1.axvspan(1, MILESTONES[0], alpha=0.05, color=PALETTE["easy"])
+    ax1.axvspan(MILESTONES[0], MILESTONES[1], alpha=0.05, color=PALETTE["medium"])
+    ax1.axvspan(MILESTONES[1], N_EPOCHS, alpha=0.05, color=PALETTE["hard"])
 
     for i, m in enumerate(MILESTONES):
         ax1.axvline(m, color="#888888", lw=1.2, ls=":", alpha=0.5)
         ax1.text(m + 1, 0.085, f"ep {m}", fontsize=8, color="#888888")
 
     # Annotations
-    ax2.annotate("Hard samples\nbegin dominating",
-                 xy=(100, diff[99]), xytext=(75, 0.55),
-                 fontsize=9, color=PALETTE["cl"], fontweight="bold",
-                 arrowprops=dict(arrowstyle="-|>", color=PALETTE["cl"], lw=1.1),
-                 bbox=dict(boxstyle="round,pad=0.28", fc="white",
-                           ec=PALETTE["cl"], alpha=0.9))
+    ax2.annotate(
+        "Hard samples\nbegin dominating",
+        xy=(100, diff[99]),
+        xytext=(75, 0.55),
+        fontsize=9,
+        color=PALETTE["cl"],
+        fontweight="bold",
+        arrowprops=dict(arrowstyle="-|>", color=PALETTE["cl"], lw=1.1),
+        bbox=dict(boxstyle="round,pad=0.28", fc="white", ec=PALETTE["cl"], alpha=0.9),
+    )
 
-    ax1.annotate("LR = 0.001\nstill trainable",
-                 xy=(112, lr[111]), xytext=(85, 0.003),
-                 fontsize=9, color=PALETTE["lr"], fontweight="bold",
-                 arrowprops=dict(arrowstyle="-|>", color=PALETTE["lr"], lw=1.1),
-                 bbox=dict(boxstyle="round,pad=0.28", fc="white",
-                           ec=PALETTE["lr"], alpha=0.9))
+    ax1.annotate(
+        "LR = 0.001\nstill trainable",
+        xy=(112, lr[111]),
+        xytext=(85, 0.003),
+        fontsize=9,
+        color=PALETTE["lr"],
+        fontweight="bold",
+        arrowprops=dict(arrowstyle="-|>", color=PALETTE["lr"], lw=1.1),
+        bbox=dict(boxstyle="round,pad=0.28", fc="white", ec=PALETTE["lr"], alpha=0.9),
+    )
 
     # Phase labels
     for start, end, label, color in [
-        (1,             MILESTONES[0], "Easy Phase",   PALETTE["easy"]),
+        (1, MILESTONES[0], "Easy Phase", PALETTE["easy"]),
         (MILESTONES[0], MILESTONES[1], "Medium Phase", PALETTE["medium"]),
-        (MILESTONES[1], N_EPOCHS,      "Hard Phase",   PALETTE["hard"]),
+        (MILESTONES[1], N_EPOCHS, "Hard Phase", PALETTE["hard"]),
     ]:
-        ax1.text((start + end) / 2, 0.075, label,
-                 ha="center", va="bottom", fontsize=9,
-                 color=color, fontweight="bold")
+        ax1.text(
+            (start + end) / 2,
+            0.075,
+            label,
+            ha="center",
+            va="bottom",
+            fontsize=9,
+            color=color,
+            fontweight="bold",
+        )
 
     ax1.set_xlabel("Epoch", labelpad=6)
     ax1.set_ylabel("Learning Rate", color=PALETTE["lr"])
@@ -319,12 +389,12 @@ def fig_lr_and_difficulty(fname="figS3_lr_difficulty_combined.png"):
 # ─────────────────────────────────────────────────────────────
 def print_schedule_analysis():
     W = 80
-    print(f"\n{'═'*W}")
+    print(f"\n{'═' * W}")
     print("  CL SCHEDULE ANALYSIS  ·  Loss-Guided Curriculum  ·  150 epochs")
-    print(f"{'═'*W}\n")
+    print(f"{'═' * W}\n")
 
-    epochs   = list(range(1, N_EPOCHS + 1))
-    diff     = [loss_guided_difficulty(e) for e in epochs]
+    epochs = list(range(1, N_EPOCHS + 1))
+    diff = [loss_guided_difficulty(e) for e in epochs]
     checkpoints = [1, 10, 25, 49, 50, 75, 99, 100, 124, 125, 150]
 
     print(f"  {'Epoch':>6}  {'Difficulty':>11}  {'Phase':>12}  {'Augmentation Level'}")
@@ -347,26 +417,32 @@ def print_schedule_analysis():
     print(f"\n  MultiStepLR milestones: {MILESTONES}")
     print("  Phase boundaries align with LR drops for maximum stability.\n")
 
-    print("  " + "Schedule".ljust(20) + "Mean Diff".rjust(10) + "Final Diff".rjust(11) + "Ramp Style")
+    print(
+        "  "
+        + "Schedule".ljust(20)
+        + "Mean Diff".rjust(10)
+        + "Final Diff".rjust(11)
+        + "Ramp Style"
+    )
     print("  " + "─" * 60)
     schedules = {
         "Loss-Guided (ours)": [loss_guided_difficulty(e) for e in epochs],
-        "Linear":             [linear_difficulty(e)      for e in epochs],
-        "Step":               [step_difficulty(e)        for e in epochs],
-        "Static":             [static_difficulty(e)      for e in epochs],
+        "Linear": [linear_difficulty(e) for e in epochs],
+        "Step": [step_difficulty(e) for e in epochs],
+        "Static": [static_difficulty(e) for e in epochs],
     }
     ramp_styles = {
         "Loss-Guided (ours)": "Sigmoid — slow start, fast middle, plateau",
-        "Linear":             "Constant rate from ep 1 to ep 150",
-        "Step":               "Discrete jumps at milestones",
-        "Static":             "Flat — no curriculum",
+        "Linear": "Constant rate from ep 1 to ep 150",
+        "Step": "Discrete jumps at milestones",
+        "Static": "Flat — no curriculum",
     }
     for name, vals in schedules.items():
-        mean_d  = np.mean(vals)
+        mean_d = np.mean(vals)
         final_d = vals[-1]
         print(f"  {name:<20} {mean_d:>10.3f} {final_d:>11.3f}  {ramp_styles[name]}")
 
-    print(f"\n{'═'*W}\n")
+    print(f"\n{'═' * W}\n")
 
 
 # MAIN

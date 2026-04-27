@@ -1,6 +1,6 @@
 # Phase 2: The "Standard Benchmark" Baselines
 import torch
-import torch.nn as nn 
+import torch.nn as nn
 from torchvision.models import resnet34
 
 
@@ -25,19 +25,19 @@ class ResNet34Baseline(nn.Module):
         self.backbone = resnet34(weights=None)
 
         self.backbone.conv1 = nn.Conv2d(
-            in_channels = 3,
-            out_channels = 64,
-            kernel_size = 3,
+            in_channels=3,
+            out_channels=64,
+            kernel_size=3,
             stride=1,
             padding=1,
-            bias=False
+            bias=False,
         )
         self.backbone.maxpool = nn.Identity()
-        self.backbone.fc      = nn.Linear(512, num_classes)
-
+        self.backbone.fc = nn.Linear(512, num_classes)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         return self.backbone(x)
+
 
 def get_baseline_model(num_classes: int = 10) -> ResNet34Baseline:
     return ResNet34Baseline(num_classes=num_classes)
@@ -49,7 +49,7 @@ if __name__ == "__main__":
     print("===== MODEL ARCHITECTURE =====")
     print(model)
     dummy = torch.zeros(4, 3, 32, 32)
-    out   = model(dummy)
+    out = model(dummy)
     print(f"Output shape: {out.shape}")
     total_params = sum(p.numel() for p in model.parameters())
     print(f"Total parameters: {total_params:,}")

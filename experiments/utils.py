@@ -18,10 +18,11 @@ class _Tee:
     """
     Mirrors all writes to sys.stdout into a log file simultaneously.
     """
+
     def __init__(self, log_path: Path):
-        self._console  = sys.stdout
-        self._log_file = open(log_path, "w", buffering=1) 
-        sys.stdout     = self
+        self._console = sys.stdout
+        self._log_file = open(log_path, "w", buffering=1)
+        sys.stdout = self
 
     def write(self, msg: str):
         self._console.write(msg)
@@ -41,10 +42,12 @@ def setup_logging(cfg: dict) -> _Tee:
     Creates results/logs/<experiment_name>_<timestamp>.log and starts
     mirroring all stdout output into it.
     """
-    log_dir = Path(cfg.get("checkpoint_dir", "./checkpoints")).parent / "results" / "logs"
+    log_dir = (
+        Path(cfg.get("checkpoint_dir", "./checkpoints")).parent / "results" / "logs"
+    )
     log_dir.mkdir(parents=True, exist_ok=True)
 
-    ts       = datetime.now().strftime("%Y%m%d_%H%M%S")
+    ts = datetime.now().strftime("%Y%m%d_%H%M%S")
     log_path = log_dir / f"{cfg['experiment_name']}_{ts}.log"
 
     tee = _Tee(log_path)
@@ -58,20 +61,25 @@ def set_seed(seed: int = 42):
     torch.manual_seed(seed)
     torch.cuda.manual_seed_all(seed)
     torch.backends.cudnn.deterministic = True
-    torch.backends.cudnn.benchmark     = False
+    torch.backends.cudnn.benchmark = False
 
 
 def _mps_is_stable() -> bool:
     """Return False if the MPS backend crashes on a conv2d probe (PyTorch < 2.1 is unreliable)."""
     try:
         import subprocess, sys
+
         result = subprocess.run(
-            [sys.executable, "-c",
-             "import torch, torch.nn as nn; "
-             "x = torch.randn(2, 3, 32, 32, device='mps'); "
-             "y = nn.Conv2d(3, 16, 3, padding=1).to('mps')(x); "
-             "assert y.shape == (2, 16, 32, 32)"],
-            timeout=15, capture_output=True,
+            [
+                sys.executable,
+                "-c",
+                "import torch, torch.nn as nn; "
+                "x = torch.randn(2, 3, 32, 32, device='mps'); "
+                "y = nn.Conv2d(3, 16, 3, padding=1).to('mps')(x); "
+                "assert y.shape == (2, 16, 32, 32)",
+            ],
+            timeout=15,
+            capture_output=True,
         )
         return result.returncode == 0
     except Exception:
@@ -94,12 +102,13 @@ def get_device() -> torch.device:
 def build_optimizer(model: nn.Module, cfg: dict):
     """Returns (optimizer, lr)."""
     name = cfg["optimizer"].lower()
-    lr   = float(cfg["lr"])
-    wd   = cfg["weight_decay"]
+    lr = float(cfg["lr"])
+    wd = cfg["weight_decay"]
 
     if name == "sgd":
-        optimizer = optim.SGD(model.parameters(), lr=lr,
-                              momentum=0.9, weight_decay=wd, nesterov=True)
+        optimizer = optim.SGD(
+            model.parameters(), lr=lr, momentum=0.9, weight_decay=wd, nesterov=True
+        )
     elif name == "adam":
         optimizer = optim.Adam(model.parameters(), lr=lr, weight_decay=wd)
     else:
@@ -112,28 +121,32 @@ def build_optimizer(model: nn.Module, cfg: dict):
 def build_scheduler(optimizer, cfg: dict):
     """Returns (scheduler, milestones)."""
     epochs = cfg["epochs"]
-    name   = cfg["scheduler"].lower()
+    name = cfg["scheduler"].lower()
 
     # Accept common aliases
     _aliases = {
         "cosine_annealing": "cosine",
-        "multisteplr":      "multistep",
+        "multisteplr": "multistep",
     }
     name = _aliases.get(name, name)
 
     if name == "multistep":
         milestones = [int(epochs * f) for f in (0.33, 0.66, 0.83)]
-        scheduler  = optim.lr_scheduler.MultiStepLR(optimizer, milestones=milestones, gamma=0.1)
+        scheduler = optim.lr_scheduler.MultiStepLR(
+            optimizer, milestones=milestones, gamma=0.1
+        )
         print(f"  Scheduler   : MultiStepLR | milestones={milestones} | gamma=0.1")
     elif name == "cosine":
-        scheduler  = optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=epochs)
+        scheduler = optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=epochs)
         milestones = []
         print(f"  Scheduler   : CosineAnnealingLR | T_max={epochs}")
     elif name == "none":
-        scheduler  = None
+        scheduler = None
         milestones = []
         print("  Scheduler   : None")
     else:
-        raise ValueError(f"Unknown scheduler '{name}'. Use 'multistep', 'cosine', or 'none'.")
+        raise ValueError(
+            f"Unknown scheduler '{name}'. Use 'multistep', 'cosine', or 'none'."
+        )
 
     return scheduler, milestones

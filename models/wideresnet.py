@@ -41,7 +41,6 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 
-
 # WIDE RESIDUAL BLOCK
 class WideBlock(nn.Module):
     """
@@ -56,22 +55,31 @@ class WideBlock(nn.Module):
         + shortcut: 1×1 Conv(in→out, stride) if dimensions differ, else Identity
     """
 
-    def __init__(self, in_channels: int, out_channels: int,
-                 stride: int = 1, dropout: float = 0.3):
+    def __init__(
+        self, in_channels: int, out_channels: int, stride: int = 1, dropout: float = 0.3
+    ):
         super().__init__()
 
-        self.bn1   = nn.BatchNorm2d(in_channels)
-        self.conv1 = nn.Conv2d(in_channels, out_channels, kernel_size=3,
-                               stride=stride, padding=1, bias=False)
-        self.drop  = nn.Dropout(p=dropout)
-        self.bn2   = nn.BatchNorm2d(out_channels)
-        self.conv2 = nn.Conv2d(out_channels, out_channels, kernel_size=3,
-                               stride=1, padding=1, bias=False)
+        self.bn1 = nn.BatchNorm2d(in_channels)
+        self.conv1 = nn.Conv2d(
+            in_channels,
+            out_channels,
+            kernel_size=3,
+            stride=stride,
+            padding=1,
+            bias=False,
+        )
+        self.drop = nn.Dropout(p=dropout)
+        self.bn2 = nn.BatchNorm2d(out_channels)
+        self.conv2 = nn.Conv2d(
+            out_channels, out_channels, kernel_size=3, stride=1, padding=1, bias=False
+        )
 
         # Shortcut — only needed when channels change or stride > 1
         if stride != 1 or in_channels != out_channels:
-            self.shortcut = nn.Conv2d(in_channels, out_channels, kernel_size=1,
-                                      stride=stride, bias=False)
+            self.shortcut = nn.Conv2d(
+                in_channels, out_channels, kernel_size=1, stride=stride, bias=False
+            )
         else:
             self.shortcut = nn.Identity()
 
@@ -79,7 +87,6 @@ class WideBlock(nn.Module):
         out = self.drop(self.conv1(F.relu(self.bn1(x), inplace=True)))
         out = self.conv2(F.relu(self.bn2(out), inplace=True))
         return out + self.shortcut(x)
-
 
 
 # WIDE RESNET
@@ -102,28 +109,41 @@ class WideResNet(nn.Module):
         WRN-28-10: [16, 160, 320, 640]
     """
 
-    def __init__(self, depth: int = 28, widen_factor: int = 10,
-                 dropout: float = 0.3, num_classes: int = 10):
+    def __init__(
+        self,
+        depth: int = 28,
+        widen_factor: int = 10,
+        dropout: float = 0.3,
+        num_classes: int = 10,
+    ):
         super().__init__()
 
-        assert (depth - 4) % 6 == 0, \
+        assert (depth - 4) % 6 == 0, (
             f"depth must be 6n+4 (e.g. 16, 22, 28, 34, 40). Got {depth}."
-        n = (depth - 4) // 6     # blocks per group
+        )
+        n = (depth - 4) // 6  # blocks per group
         k = widen_factor
 
         widths = [16, 16 * k, 32 * k, 64 * k]
 
-        self.conv1  = nn.Conv2d(3, widths[0], kernel_size=3, padding=1, bias=False)
-        self.group1 = self._make_group(widths[0], widths[1], n, stride=1, dropout=dropout)
-        self.group2 = self._make_group(widths[1], widths[2], n, stride=2, dropout=dropout)
-        self.group3 = self._make_group(widths[2], widths[3], n, stride=2, dropout=dropout)
-        self.bn     = nn.BatchNorm2d(widths[3])
-        self.fc     = nn.Linear(widths[3], num_classes)
+        self.conv1 = nn.Conv2d(3, widths[0], kernel_size=3, padding=1, bias=False)
+        self.group1 = self._make_group(
+            widths[0], widths[1], n, stride=1, dropout=dropout
+        )
+        self.group2 = self._make_group(
+            widths[1], widths[2], n, stride=2, dropout=dropout
+        )
+        self.group3 = self._make_group(
+            widths[2], widths[3], n, stride=2, dropout=dropout
+        )
+        self.bn = nn.BatchNorm2d(widths[3])
+        self.fc = nn.Linear(widths[3], num_classes)
 
         self._init_weights()
 
-    def _make_group(self, in_ch: int, out_ch: int, n: int,
-                    stride: int, dropout: float) -> nn.Sequential:
+    def _make_group(
+        self, in_ch: int, out_ch: int, n: int, stride: int, dropout: float
+    ) -> nn.Sequential:
         """Build one group of n wide blocks."""
         blocks = [WideBlock(in_ch, out_ch, stride=stride, dropout=dropout)]
         for _ in range(1, n):
@@ -153,10 +173,10 @@ class WideResNet(nn.Module):
         return self.fc(out)
 
 
-
 # FACTORY FUNCTIONS
-def get_wideresnet(depth: int = 28, widen_factor: int = 10,
-                   dropout: float = 0.3, num_classes: int = 10) -> WideResNet:
+def get_wideresnet(
+    depth: int = 28, widen_factor: int = 10, dropout: float = 0.3, num_classes: int = 10
+) -> WideResNet:
     """
     Get WideResNet model.
 
@@ -168,8 +188,9 @@ def get_wideresnet(depth: int = 28, widen_factor: int = 10,
     Usage:
         model = get_wideresnet(depth=28, widen_factor=10, num_classes=10)
     """
-    return WideResNet(depth=depth, widen_factor=widen_factor,
-                      dropout=dropout, num_classes=num_classes)
+    return WideResNet(
+        depth=depth, widen_factor=widen_factor, dropout=dropout, num_classes=num_classes
+    )
 
 
 def get_wrn28_10(num_classes: int = 10) -> WideResNet:
@@ -185,20 +206,19 @@ def get_wrn16_8(num_classes: int = 10) -> WideResNet:
 # QUICK TEST
 
 if __name__ == "__main__":
-
     print("WideResNet — Zagoruyko & Komodakis (2016)\n")
     print("Used in RandAugment (Cubuk et al. 2020) for CIFAR-10:\n")
 
     configs = [
         ("WRN-28-10  (paper model)", dict(depth=28, widen_factor=10)),
-        ("WRN-16-8   (lighter)",     dict(depth=16, widen_factor=8)),
+        ("WRN-16-8   (lighter)", dict(depth=16, widen_factor=8)),
     ]
 
     dummy = torch.zeros(4, 3, 32, 32)
 
     for name, kwargs in configs:
-        model  = get_wideresnet(**kwargs, num_classes=10)
-        out    = model(dummy)
+        model = get_wideresnet(**kwargs, num_classes=10)
+        out = model(dummy)
         params = sum(p.numel() for p in model.parameters())
         print(f"  {name}")
         print(f"    Output shape : {out.shape}")

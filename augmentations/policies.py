@@ -14,11 +14,34 @@ FIXED_STRENGTH = 0.7
 
 _TIER_OPS = {
     1: ["flip", "crop", "translate_x", "translate_y"],
-    2: ["flip", "crop", "translate_x", "translate_y",
-        "color_jitter", "rotation", "shear", "auto_contrast", "equalize", "sharpness"],
-    3: ["flip", "crop", "translate_x", "translate_y",
-        "color_jitter", "rotation", "shear", "auto_contrast", "equalize", "sharpness",
-        "grayscale", "cutout", "contrast", "brightness"],
+    2: [
+        "flip",
+        "crop",
+        "translate_x",
+        "translate_y",
+        "color_jitter",
+        "rotation",
+        "shear",
+        "auto_contrast",
+        "equalize",
+        "sharpness",
+    ],
+    3: [
+        "flip",
+        "crop",
+        "translate_x",
+        "translate_y",
+        "color_jitter",
+        "rotation",
+        "shear",
+        "auto_contrast",
+        "equalize",
+        "sharpness",
+        "grayscale",
+        "cutout",
+        "contrast",
+        "brightness",
+    ],
 }
 
 # How many ops are randomly sampled per tier (subsampling adds within-tier diversity).
@@ -28,14 +51,14 @@ _TIER_N_OPS = {1: 3, 2: 5, 3: 7}
 # Tier 3 always equals the ceiling; lower tiers scale down proportionally.
 _TIER_STRENGTH_FRACS = {1: 0.40, 2: 0.70, 3: 1.0}
 
-_STRENGTH_RAMP_EPOCHS = 5   # epochs to linearly ramp strength at each tier boundary
+_STRENGTH_RAMP_EPOCHS = 5  # epochs to linearly ramp strength at each tier boundary
 
 
 class AugmentationPolicy:
     def __init__(self, dataset: str = "cifar100"):
-        self.dataset   = dataset
-        self.mean      = STATS[dataset]["mean"]
-        self.std       = STATS[dataset]["std"]
+        self.dataset = dataset
+        self.mean = STATS[dataset]["mean"]
+        self.std = STATS[dataset]["std"]
         self.normalize = T.Normalize(self.mean, self.std)
 
     def get_train_transform(self) -> T.Compose:
@@ -65,10 +88,10 @@ class _FullStaticTransform:
 
     def __init__(self, dataset: str = "cifar100", strength: float = FIXED_STRENGTH):
         mean = STATS[dataset]["mean"]
-        std  = STATS[dataset]["std"]
+        std = STATS[dataset]["std"]
         self.normalize = T.Normalize(mean, std)
         self.to_tensor = T.ToTensor()
-        self.strength  = strength
+        self.strength = strength
 
     def __call__(self, img):
         active = random.sample(_TIER_OPS[3], _TIER_N_OPS[3])
@@ -109,17 +132,22 @@ class ThreeTierCurriculumTransform:
         3: "Tier 3 [+grayscale, cutout, contrast, brightness]",
     }
 
-    def __init__(self, dataset: str = "cifar10", t1: int = 33, t2: int = 66,
-                 strength: float = FIXED_STRENGTH):
+    def __init__(
+        self,
+        dataset: str = "cifar10",
+        t1: int = 33,
+        t2: int = 66,
+        strength: float = FIXED_STRENGTH,
+    ):
         mean = STATS[dataset]["mean"]
-        std  = STATS[dataset]["std"]
+        std = STATS[dataset]["std"]
         self.normalize = T.Normalize(mean, std)
         self.to_tensor = T.ToTensor()
-        self.t1           = t1
-        self.t2           = t2
-        self.epoch        = 1
-        self.strength     = strength   # ceiling — reached at Tier 3
-        self._forced_tier = None       # set by loss/entropy schedulers; None = time-based
+        self.t1 = t1
+        self.t2 = t2
+        self.epoch = 1
+        self.strength = strength  # ceiling — reached at Tier 3
+        self._forced_tier = None  # set by loss/entropy schedulers; None = time-based
 
     def set_epoch(self, epoch: int) -> None:
         self.epoch = epoch
@@ -132,9 +160,9 @@ class ThreeTierCurriculumTransform:
         self._forced_tier = tier
 
     def tier(self) -> int:
-        if self._forced_tier is not None:   # loss/entropy path
+        if self._forced_tier is not None:  # loss/entropy path
             return self._forced_tier
-        if self.epoch <= self.t1:           # time-based path — unchanged
+        if self.epoch <= self.t1:  # time-based path — unchanged
             return 1
         if self.epoch <= self.t2:
             return 2
@@ -152,8 +180,8 @@ class ThreeTierCurriculumTransform:
         s_curr = self._tier_strength(tier)
         if tier == 1:
             return s_curr
-        boundary  = self.t1 if tier == 2 else self.t2
-        epochs_in = self.epoch - boundary          # 1 on first epoch of new tier
+        boundary = self.t1 if tier == 2 else self.t2
+        epochs_in = self.epoch - boundary  # 1 on first epoch of new tier
         if 0 < epochs_in <= _STRENGTH_RAMP_EPOCHS:
             s_prev = self._tier_strength(tier - 1)
             return s_prev + (s_curr - s_prev) * (epochs_in / _STRENGTH_RAMP_EPOCHS)
@@ -170,11 +198,11 @@ class ThreeTierCurriculumTransform:
         return 1.0
 
     def __call__(self, img):
-        tier   = self.tier()
-        pool   = _TIER_OPS[tier]
-        n      = _TIER_N_OPS[tier]
+        tier = self.tier()
+        pool = _TIER_OPS[tier]
+        n = _TIER_N_OPS[tier]
         active = random.sample(pool, n)
-        s      = self._current_strength()
+        s = self._current_strength()
         for name in active:
             fn, _, _ = AUGMENTATION_REGISTRY[name]
             img = fn(img, s)
@@ -184,16 +212,22 @@ class ThreeTierCurriculumTransform:
 class ThreeTierCurriculumAugmentation(AugmentationPolicy):
     """3-tier curriculum: ops introduced progressively at epochs t1 and t2."""
 
-    def __init__(self, dataset: str = "cifar10", t1: int = 33, t2: int = 66,
-                 strength: float = FIXED_STRENGTH):
+    def __init__(
+        self,
+        dataset: str = "cifar10",
+        t1: int = 33,
+        t2: int = 66,
+        strength: float = FIXED_STRENGTH,
+    ):
         super().__init__(dataset=dataset)
-        self.t1       = t1
-        self.t2       = t2
+        self.t1 = t1
+        self.t2 = t2
         self.strength = strength
 
     def get_train_transform(self) -> ThreeTierCurriculumTransform:
-        return ThreeTierCurriculumTransform(dataset=self.dataset, t1=self.t1, t2=self.t2,
-                                            strength=self.strength)
+        return ThreeTierCurriculumTransform(
+            dataset=self.dataset, t1=self.t1, t2=self.t2, strength=self.strength
+        )
 
 
 class RandomAugmentTransform:
@@ -201,7 +235,7 @@ class RandomAugmentTransform:
 
     def __init__(self, dataset: str = "cifar10"):
         mean = STATS[dataset]["mean"]
-        std  = STATS[dataset]["std"]
+        std = STATS[dataset]["std"]
         self.normalize = T.Normalize(mean, std)
         self.to_tensor = T.ToTensor()
         self.ops = [(name, fn) for name, (fn, _, _) in AUGMENTATION_REGISTRY.items()]
@@ -237,6 +271,7 @@ class RandAugmentPolicy(AugmentationPolicy):
 
     def get_train_transform(self):
         from augmentations.randaugment import RandAugmentTransform
+
         return RandAugmentTransform(N=self.N, M=self.M, dataset=self.dataset)
 
     def get_val_transform(self) -> T.Compose:
@@ -247,11 +282,11 @@ class RandAugmentPolicy(AugmentationPolicy):
 
 
 POLICY_REGISTRY = {
-    "none":              NoAugmentation,
-    "static":            StaticAugmentation,
+    "none": NoAugmentation,
+    "static": StaticAugmentation,
     "tiered_curriculum": ThreeTierCurriculumAugmentation,
-    "random":            RandomAugmentation,
-    "randaugment":       RandAugmentPolicy,
+    "random": RandomAugmentation,
+    "randaugment": RandAugmentPolicy,
 }
 
 
@@ -259,8 +294,7 @@ def get_policy(name: str, dataset: str = "cifar10") -> AugmentationPolicy:
     name = name.lower().strip()
     if name not in POLICY_REGISTRY:
         raise ValueError(
-            f"Unknown policy: '{name}'. "
-            f"Available: {list(POLICY_REGISTRY.keys())}"
+            f"Unknown policy: '{name}'. Available: {list(POLICY_REGISTRY.keys())}"
         )
     return POLICY_REGISTRY[name](dataset=dataset)
 
@@ -270,9 +304,9 @@ def get_all_baseline_policies(dataset: str = "cifar10") -> dict:
 
 
 THESIS_BASELINES = {
-    "none":   ("No augmentation — absolute floor",        "~78%"),
+    "none": ("No augmentation — absolute floor", "~78%"),
     "static": ("Standard fixed pipeline — main baseline", "~84%"),
-    "random": ("All augs randomly, no schedule",          "~85%"),
+    "random": ("All augs randomly, no schedule", "~85%"),
 }
 
 
@@ -284,11 +318,13 @@ if __name__ == "__main__":
     img = Image.fromarray((np.random.rand(32, 32, 3) * 255).astype(np.uint8))
 
     for name, PolicyClass in POLICY_REGISTRY.items():
-        policy    = PolicyClass(dataset="cifar10")
+        policy = PolicyClass(dataset="cifar10")
         transform = policy.get_train_transform()
         try:
             result = transform(img)
-            print(f"  {name:<18} → output shape: {result.shape}  transform: {type(transform).__name__}")
+            print(
+                f"  {name:<18} → output shape: {result.shape}  transform: {type(transform).__name__}"
+            )
         except Exception as e:
             print(f"  {name:<18} → ERROR: {e}")
 
@@ -300,4 +336,4 @@ if __name__ == "__main__":
     print("\nSanity check — 3 calls should differ (random strengths per call):")
     for i in range(3):
         t = rt(img)
-        print(f"  call {i+1}: mean={t.mean():.4f}  std={t.std():.4f}")
+        print(f"  call {i + 1}: mean={t.mean():.4f}  std={t.std():.4f}")

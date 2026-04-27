@@ -47,7 +47,6 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 
-
 # PYRAMID BASIC BLOCK
 class PyramidBlock(nn.Module):
     """
@@ -65,22 +64,30 @@ class PyramidBlock(nn.Module):
 
     def __init__(self, in_channels: int, out_channels: int, stride: int = 1):
         super().__init__()
-        self.bn1   = nn.BatchNorm2d(in_channels)
-        self.conv1 = nn.Conv2d(in_channels, out_channels, kernel_size=3,
-                               stride=stride, padding=1, bias=False)
-        self.bn2   = nn.BatchNorm2d(out_channels)
-        self.conv2 = nn.Conv2d(out_channels, out_channels, kernel_size=3,
-                               stride=1, padding=1, bias=False)
-        self.bn3   = nn.BatchNorm2d(out_channels)   # applied after addition
+        self.bn1 = nn.BatchNorm2d(in_channels)
+        self.conv1 = nn.Conv2d(
+            in_channels,
+            out_channels,
+            kernel_size=3,
+            stride=stride,
+            padding=1,
+            bias=False,
+        )
+        self.bn2 = nn.BatchNorm2d(out_channels)
+        self.conv2 = nn.Conv2d(
+            out_channels, out_channels, kernel_size=3, stride=1, padding=1, bias=False
+        )
+        self.bn3 = nn.BatchNorm2d(out_channels)  # applied after addition
 
-        self.stride      = stride
+        self.stride = stride
         self.in_channels = in_channels
-        self.out_channels= out_channels
+        self.out_channels = out_channels
 
         # Shortcut: avg pool for stride > 1, then zero-pad if channels differ
         if stride > 1:
-            self.shortcut_pool = nn.AvgPool2d(kernel_size=stride, stride=stride,
-                                              ceil_mode=True)
+            self.shortcut_pool = nn.AvgPool2d(
+                kernel_size=stride, stride=stride, ceil_mode=True
+            )
         else:
             self.shortcut_pool = None
 
@@ -122,29 +129,33 @@ class PyramidNet(nn.Module):
     def __init__(self, depth: int = 110, alpha: int = 48, num_classes: int = 10):
         super().__init__()
 
-        assert (depth - 2) % 6 == 0, \
+        assert (depth - 2) % 6 == 0, (
             f"depth must be 6n+2 for basic blocks (e.g. 20, 32, 44, 110). Got {depth}."
-        n = (depth - 2) // 6   # blocks per group
+        )
+        n = (depth - 2) // 6  # blocks per group
 
         # Compute per-layer channel widths — this is the key PyramidNet feature
         # Each of the 3n blocks increases channels by alpha / (3n)
         total_blocks = 3 * n
         self._widths = [
-            16 + round(alpha * (i + 1) / total_blocks)
-            for i in range(total_blocks)
+            16 + round(alpha * (i + 1) / total_blocks) for i in range(total_blocks)
         ]
 
-        self.conv1  = nn.Conv2d(3, 16, kernel_size=3, stride=1, padding=1, bias=False)
-        self.bn1    = nn.BatchNorm2d(16)
+        self.conv1 = nn.Conv2d(3, 16, kernel_size=3, stride=1, padding=1, bias=False)
+        self.bn1 = nn.BatchNorm2d(16)
 
         # Build 3 groups of n blocks each
-        self.layer1 = self._make_layer(16,              self._widths[:n],       stride=1)
-        self.layer2 = self._make_layer(self._widths[n-1], self._widths[n:2*n],  stride=2)
-        self.layer3 = self._make_layer(self._widths[2*n-1], self._widths[2*n:], stride=2)
+        self.layer1 = self._make_layer(16, self._widths[:n], stride=1)
+        self.layer2 = self._make_layer(
+            self._widths[n - 1], self._widths[n : 2 * n], stride=2
+        )
+        self.layer3 = self._make_layer(
+            self._widths[2 * n - 1], self._widths[2 * n :], stride=2
+        )
 
         final_channels = self._widths[-1]
-        self.bn_final  = nn.BatchNorm2d(final_channels)
-        self.fc        = nn.Linear(final_channels, num_classes)
+        self.bn_final = nn.BatchNorm2d(final_channels)
+        self.fc = nn.Linear(final_channels, num_classes)
 
         self._init_weights()
 
@@ -184,8 +195,9 @@ class PyramidNet(nn.Module):
 
 
 # FACTORY FUNCTIONS
-def get_pyramidnet(depth: int = 110, alpha: int = 48,
-                   num_classes: int = 10) -> PyramidNet:
+def get_pyramidnet(
+    depth: int = 110, alpha: int = 48, num_classes: int = 10
+) -> PyramidNet:
     """
     Get PyramidNet model.
 
@@ -213,10 +225,8 @@ def get_pyramidnet272(num_classes: int = 10) -> PyramidNet:
     return PyramidNet(depth=272, alpha=200, num_classes=num_classes)
 
 
-
 # QUICK TEST
 if __name__ == "__main__":
-
     print("PyramidNet — Han et al. (CVPR 2017)")
     print("Used in RandAugment (Cubuk et al. 2020) for CIFAR-10 SOTA\n")
 
@@ -228,12 +238,14 @@ if __name__ == "__main__":
     dummy = torch.zeros(4, 3, 32, 32)
 
     for name, kwargs in configs:
-        model  = get_pyramidnet(**kwargs, num_classes=10)
-        out    = model(dummy)
+        model = get_pyramidnet(**kwargs, num_classes=10)
+        out = model(dummy)
         params = sum(p.numel() for p in model.parameters())
         print(f"  {name}")
         print(f"    Output shape : {out.shape}")
         print(f"    Parameters   : {params:>12,}")
-        print(f"    Channel widths (first 5 / last 5): "
-              f"{model._widths[:5]} ... {model._widths[-5:]}")
+        print(
+            f"    Channel widths (first 5 / last 5): "
+            f"{model._widths[:5]} ... {model._widths[-5:]}"
+        )
         print()

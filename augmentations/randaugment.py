@@ -59,7 +59,7 @@ from PIL import Image, ImageOps, ImageEnhance
 # MAGNITUDE HELPERS
 # ─────────────────────────────────────────────────────────────
 
-FILL = (128, 128, 128)   # mid-gray fill for geometric transforms (paper standard)
+FILL = (128, 128, 128)  # mid-gray fill for geometric transforms (paper standard)
 
 
 def _to_level(M: int, max_val: float, min_val: float = 0.0) -> float:
@@ -84,6 +84,7 @@ def _signed(v: float) -> float:
 # 14 AUGMENTATION OPERATIONS (Cubuk et al. 2020, Table 1)
 # Each function signature: op(img: PIL.Image, M: int) -> PIL.Image
 # ─────────────────────────────────────────────────────────────
+
 
 def identity(img: Image.Image, M: int) -> Image.Image:
     """No-op. Included so the op pool covers the full space."""
@@ -182,8 +183,13 @@ def shear_x(img: Image.Image, M: int) -> Image.Image:
         input_x = x + shear * y,  input_y = y
     """
     shear = _signed(_to_level(M, max_val=0.3))
-    return img.transform(img.size, Image.AFFINE, (1, shear, 0, 0, 1, 0),
-                         resample=Image.BILINEAR, fillcolor=FILL)
+    return img.transform(
+        img.size,
+        Image.AFFINE,
+        (1, shear, 0, 0, 1, 0),
+        resample=Image.BILINEAR,
+        fillcolor=FILL,
+    )
 
 
 def shear_y(img: Image.Image, M: int) -> Image.Image:
@@ -196,8 +202,13 @@ def shear_y(img: Image.Image, M: int) -> Image.Image:
         input_x = x,  input_y = shear * x + y
     """
     shear = _signed(_to_level(M, max_val=0.3))
-    return img.transform(img.size, Image.AFFINE, (1, 0, 0, shear, 1, 0),
-                         resample=Image.BILINEAR, fillcolor=FILL)
+    return img.transform(
+        img.size,
+        Image.AFFINE,
+        (1, 0, 0, shear, 1, 0),
+        resample=Image.BILINEAR,
+        fillcolor=FILL,
+    )
 
 
 def translate_x(img: Image.Image, M: int) -> Image.Image:
@@ -213,8 +224,13 @@ def translate_x(img: Image.Image, M: int) -> Image.Image:
         input_x = x + v,  input_y = y
     """
     pixels = _signed(_to_level(M, max_val=10.0))
-    return img.transform(img.size, Image.AFFINE, (1, 0, pixels, 0, 1, 0),
-                         resample=Image.BILINEAR, fillcolor=FILL)
+    return img.transform(
+        img.size,
+        Image.AFFINE,
+        (1, 0, pixels, 0, 1, 0),
+        resample=Image.BILINEAR,
+        fillcolor=FILL,
+    )
 
 
 def translate_y(img: Image.Image, M: int) -> Image.Image:
@@ -227,8 +243,13 @@ def translate_y(img: Image.Image, M: int) -> Image.Image:
         input_x = x,  input_y = y + v
     """
     pixels = _signed(_to_level(M, max_val=10.0))
-    return img.transform(img.size, Image.AFFINE, (1, 0, 0, 0, 1, pixels),
-                         resample=Image.BILINEAR, fillcolor=FILL)
+    return img.transform(
+        img.size,
+        Image.AFFINE,
+        (1, 0, 0, 0, 1, pixels),
+        resample=Image.BILINEAR,
+        fillcolor=FILL,
+    )
 
 
 # ─────────────────────────────────────────────────────────────
@@ -252,12 +273,13 @@ RANDAUGMENT_OPS = [
     translate_y,
 ]
 
-OP_NAMES = [fn.__name__ for fn in RANDAUGMENT_OPS]   # for logging / inspection
+OP_NAMES = [fn.__name__ for fn in RANDAUGMENT_OPS]  # for logging / inspection
 
 
 # ─────────────────────────────────────────────────────────────
 # RANDAUGMENT OP — PIL → PIL  (drop-in for T.Compose)
 # ─────────────────────────────────────────────────────────────
+
 
 class RandAugmentOp:
     """
@@ -281,8 +303,8 @@ class RandAugmentOp:
     """
 
     def __init__(self, N: int = 2, M: int = 9):
-        self.N   = N
-        self.M   = M
+        self.N = N
+        self.M = M
         self.ops = RANDAUGMENT_OPS
 
     def __call__(self, img: Image.Image) -> Image.Image:
@@ -301,7 +323,7 @@ class RandAugmentOp:
 # ─────────────────────────────────────────────────────────────
 
 STATS = {
-    "cifar10":  {"mean": (0.4914, 0.4822, 0.4465), "std": (0.2470, 0.2435, 0.2616)},
+    "cifar10": {"mean": (0.4914, 0.4822, 0.4465), "std": (0.2470, 0.2435, 0.2616)},
     "cifar100": {"mean": (0.5071, 0.4867, 0.4408), "std": (0.2675, 0.2565, 0.2761)},
 }
 
@@ -309,6 +331,7 @@ STATS = {
 # ─────────────────────────────────────────────────────────────
 # FULL TRANSFORM — PIL → tensor  (standalone, no T.Compose needed)
 # ─────────────────────────────────────────────────────────────
+
 
 class RandAugmentTransform:
     """
@@ -330,16 +353,18 @@ class RandAugmentTransform:
     """
 
     def __init__(self, N: int = 2, M: int = 9, dataset: str = "cifar10"):
-        self.N   = N
-        self.M   = M
-        stats    = STATS[dataset]
-        self._transform = T.Compose([
-            T.RandomCrop(32, padding=4),
-            T.RandomHorizontalFlip(),
-            RandAugmentOp(N=N, M=M),
-            T.ToTensor(),
-            T.Normalize(stats["mean"], stats["std"]),
-        ])
+        self.N = N
+        self.M = M
+        stats = STATS[dataset]
+        self._transform = T.Compose(
+            [
+                T.RandomCrop(32, padding=4),
+                T.RandomHorizontalFlip(),
+                RandAugmentOp(N=N, M=M),
+                T.ToTensor(),
+                T.Normalize(stats["mean"], stats["std"]),
+            ]
+        )
 
     def __call__(self, img: Image.Image) -> torch.Tensor:
         return self._transform(img)
@@ -358,7 +383,7 @@ if __name__ == "__main__":
     print("RandAugment (Cubuk et al., NeurIPS 2020)\n")
     print(f"  Operation pool ({len(RANDAUGMENT_OPS)} ops):")
     for i, fn in enumerate(RANDAUGMENT_OPS):
-        print(f"    {i+1:>2}. {fn.__name__}")
+        print(f"    {i + 1:>2}. {fn.__name__}")
 
     img = Image.fromarray((np.random.rand(32, 32, 3) * 255).astype(np.uint8))
 
@@ -366,7 +391,9 @@ if __name__ == "__main__":
     transform = RandAugmentTransform(N=2, M=9, dataset="cifar10")
     for i in range(3):
         t = transform(img)
-        print(f"    call {i+1}: shape={t.shape}  mean={t.mean():.4f}  std={t.std():.4f}")
+        print(
+            f"    call {i + 1}: shape={t.shape}  mean={t.mean():.4f}  std={t.std():.4f}"
+        )
 
     print("\n  Magnitude sweep (which ops fire at N=2, M=9):")
     op = RandAugmentOp(N=2, M=9)

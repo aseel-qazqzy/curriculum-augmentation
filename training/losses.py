@@ -33,7 +33,10 @@ def compute_sample_difficulty(
         return torch.sigmoid(scaled - scaled.mean())
 
     else:
-        raise ValueError(f"Unknown mode: {mode}. Use 'inverse', 'direct', or 'normalized'.")
+        raise ValueError(
+            f"Unknown mode: {mode}. Use 'inverse', 'direct', or 'normalized'."
+        )
+
 
 def epoch_difficulty(
     epoch: int,
@@ -58,7 +61,7 @@ def epoch_difficulty(
     progress = min(progress, 1.0)
 
     if schedule == "sigmoid":
-        t      = (progress - 0.5) / 0.15
+        t = (progress - 0.5) / 0.15
         result = float(1.0 / (1.0 + np.exp(-t)))
 
     elif schedule == "linear":
@@ -68,24 +71,29 @@ def epoch_difficulty(
         result = float(0.5 * (1 - np.cos(np.pi * progress)))
 
     elif schedule == "step":
-        if progress < 0.33:   result = 0.0
-        elif progress < 0.66: result = 0.33
-        elif progress < 0.83: result = 0.66
-        else:                 result = 1.0
+        if progress < 0.33:
+            result = 0.0
+        elif progress < 0.66:
+            result = 0.33
+        elif progress < 0.83:
+            result = 0.66
+        else:
+            result = 1.0
 
     else:
         raise ValueError(f"Unknown schedule: {schedule}")
 
     return min(result, max_difficulty)
 
+
 def get_batch_difficulties(
     loss_per_sample: torch.Tensor,
     epoch: int,
     total_epochs: int,
-    schedule: str  = "sigmoid",
-    mode: str      = "inverse",
+    schedule: str = "sigmoid",
+    mode: str = "inverse",
     warmup_epochs: int = 5,
-    blend: float   = 0.7,
+    blend: float = 0.7,
     aug_milestones: list = None,
     max_difficulty: float = 1.0,
 ) -> torch.Tensor:
@@ -93,31 +101,38 @@ def get_batch_difficulties(
     Per-sample difficulty = blend * epoch_level + (1 - blend) * sample_level.
     blend=1.0 → pure epoch schedule; blend=0.0 → fully loss-driven.
     """
-    ep_diff        = epoch_difficulty(epoch, total_epochs, schedule, warmup_epochs,
-                                      aug_milestones=aug_milestones,
-                                      max_difficulty=max_difficulty)
+    ep_diff = epoch_difficulty(
+        epoch,
+        total_epochs,
+        schedule,
+        warmup_epochs,
+        aug_milestones=aug_milestones,
+        max_difficulty=max_difficulty,
+    )
     ep_diff_tensor = torch.full_like(loss_per_sample, ep_diff)
-    sample_diff    = compute_sample_difficulty(loss_per_sample, mode=mode)
-    final          = blend * ep_diff_tensor + (1.0 - blend) * sample_diff
+    sample_diff = compute_sample_difficulty(loss_per_sample, mode=mode)
+    final = blend * ep_diff_tensor + (1.0 - blend) * sample_diff
     return final.clamp(0.0, 1.0)
+
 
 class LabelSmoothingLoss(nn.Module):
     """Cross-entropy with label smoothing. Use reduction='none' for per-sample loss."""
 
-    def __init__(self, num_classes: int, smoothing: float = 0.1,
-                 reduction: str = "mean"):
+    def __init__(
+        self, num_classes: int, smoothing: float = 0.1, reduction: str = "mean"
+    ):
         super().__init__()
         self.num_classes = num_classes
-        self.smoothing   = smoothing
-        self.reduction   = reduction
-        self.confidence  = 1.0 - smoothing
+        self.smoothing = smoothing
+        self.reduction = reduction
+        self.confidence = 1.0 - smoothing
 
-    def forward(self, logits: torch.Tensor,
-                targets: torch.Tensor) -> torch.Tensor:
+    def forward(self, logits: torch.Tensor, targets: torch.Tensor) -> torch.Tensor:
         log_probs = F.log_softmax(logits, dim=-1)
         with torch.no_grad():
-            smooth_targets = torch.full_like(log_probs,
-                                             self.smoothing / (self.num_classes - 1))
+            smooth_targets = torch.full_like(
+                log_probs, self.smoothing / (self.num_classes - 1)
+            )
             smooth_targets.scatter_(1, targets.unsqueeze(1), self.confidence)
         loss = -(smooth_targets * log_probs).sum(dim=-1)
         if self.reduction == "mean":
@@ -127,6 +142,7 @@ class LabelSmoothingLoss(nn.Module):
         else:
             return loss.sum()
 
+
 class LossTracker:
     """Exponential moving average of per-sample losses for stable difficulty signals."""
 
@@ -134,17 +150,17 @@ class LossTracker:
         if not (0.0 <= momentum < 1.0):
             raise ValueError(f"momentum must be in [0, 1), got {momentum}")
         self.n_samples = n_samples
-        self.momentum  = momentum
-        self.ema_loss  = np.zeros(n_samples, dtype=np.float32)
+        self.momentum = momentum
+        self.ema_loss = np.zeros(n_samples, dtype=np.float32)
         self.n_updates = np.zeros(n_samples, dtype=np.int32)
 
     def reset(self):
-        self.ema_loss  = np.zeros(self.n_samples, dtype=np.float32)
+        self.ema_loss = np.zeros(self.n_samples, dtype=np.float32)
         self.n_updates = np.zeros(self.n_samples, dtype=np.int32)
 
     def update(self, indices: torch.Tensor, losses: torch.Tensor):
-        idx        = indices.cpu().numpy()
-        lss        = losses.detach().cpu().numpy()
+        idx = indices.cpu().numpy()
+        lss = losses.detach().cpu().numpy()
         first_seen = self.n_updates[idx] == 0
         self.ema_loss[idx] = np.where(
             first_seen,
@@ -153,8 +169,10 @@ class LossTracker:
         )
         self.n_updates[idx] += 1
 
-    def get_difficulty(self, indices: torch.Tensor, mode: str = "inverse") -> torch.Tensor:
-        idx    = indices.cpu().numpy()
+    def get_difficulty(
+        self, indices: torch.Tensor, mode: str = "inverse"
+    ) -> torch.Tensor:
+        idx = indices.cpu().numpy()
         losses = torch.tensor(self.ema_loss[idx], dtype=torch.float32)
         return compute_sample_difficulty(losses, mode=mode)
 
@@ -162,14 +180,23 @@ class LossTracker:
         seen = self.n_updates > 0
         return float(self.ema_loss[seen].mean()) if seen.any() else 0.0
 
+
 class LossPlateauScheduler:
-    def __init__(self, tau=0.02, window=5, min_epochs_per_tier=10, max_epochs_per_tier=0,
-                 higher_is_better=False):
-        self.tau = tau # min relative improvement to stay in tier
-        self.window = window # epochs to look back
+    def __init__(
+        self,
+        tau=0.02,
+        window=5,
+        min_epochs_per_tier=10,
+        max_epochs_per_tier=0,
+        higher_is_better=False,
+    ):
+        self.tau = tau  # min relative improvement to stay in tier
+        self.window = window  # epochs to look back
         self.min_epochs = min_epochs_per_tier
         self.max_epochs = max_epochs_per_tier  # hard cap per tier; 0 = disabled
-        self.higher_is_better = higher_is_better  # True when tracking val_acc instead of loss
+        self.higher_is_better = (
+            higher_is_better  # True when tracking val_acc instead of loss
+        )
         self.loss_history = []
         self.tier_change_log = []
         self.current_tier = 1
@@ -186,10 +213,10 @@ class LossPlateauScheduler:
         if self.current_tier == 3:
             return False
 
-        if self.epochs_in_tier < self.min_epochs: # Minimum epochs spent in this tier
+        if self.epochs_in_tier < self.min_epochs:  # Minimum epochs spent in this tier
             return False
 
-        # Hard cap: force advancement if stuck too long 
+        # Hard cap: force advancement if stuck too long
         if self.max_epochs > 0 and self.epochs_in_tier >= self.max_epochs:
             return True
 
@@ -200,13 +227,15 @@ class LossPlateauScheduler:
         if len(self.loss_history) < self.window * 2:
             return False
 
-        recent_avg   = sum(self.loss_history[-self.window:]) / self.window
-        previous_avg = sum(self.loss_history[-self.window * 2:-self.window]) / self.window
+        recent_avg = sum(self.loss_history[-self.window :]) / self.window
+        previous_avg = (
+            sum(self.loss_history[-self.window * 2 : -self.window]) / self.window
+        )
         denom = max(abs(previous_avg), 1e-8)
         if self.higher_is_better:
-            improvement = (recent_avg - previous_avg) / denom   # val_acc: up is better
+            improvement = (recent_avg - previous_avg) / denom  # val_acc: up is better
         else:
-            improvement = (previous_avg - recent_avg) / denom   # loss: down is better
+            improvement = (previous_avg - recent_avg) / denom  # loss: down is better
         return improvement < self.tau
 
     def advance(self, epoch: int = -1):
@@ -225,17 +254,18 @@ class LossPlateauScheduler:
 
     # Return a readable summary of the current state
     def __repr__(self):
-        return (f"LossPlateauScheduler(tier={self.current_tier}, "
-              f"tau={self.tau}, window={self.window}, "
-              f"epochs_in_tier={self.epochs_in_tier})")              
-    
-    
+        return (
+            f"LossPlateauScheduler(tier={self.current_tier}, "
+            f"tau={self.tau}, window={self.window}, "
+            f"epochs_in_tier={self.epochs_in_tier})"
+        )
+
 
 if __name__ == "__main__":
     print("Testing losses.py...\n")
 
     losses = torch.tensor([0.1, 0.5, 1.2, 2.5, 4.0])
-    diff   = compute_sample_difficulty(losses, mode="inverse")
+    diff = compute_sample_difficulty(losses, mode="inverse")
     print("Per-sample difficulty (inverse mode):")
     for l, d in zip(losses, diff):
         print(f"  loss={l:.1f} → difficulty={d:.3f}")
@@ -248,9 +278,9 @@ if __name__ == "__main__":
 
     print("\nLabel smoothing loss:")
     criterion = LabelSmoothingLoss(num_classes=10, smoothing=0.1, reduction="none")
-    logits  = torch.randn(4, 10)
+    logits = torch.randn(4, 10)
     targets = torch.randint(0, 10, (4,))
-    loss    = criterion(logits, targets)
+    loss = criterion(logits, targets)
     print(f"  Per-sample losses: {loss.tolist()}")
 
     print("\nDone.")

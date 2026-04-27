@@ -50,7 +50,7 @@ def cutmix(
     mixed = images.clone()
     mixed[:, :, y1:y2, x1:x2] = images[idx, :, y1:y2, x1:x2]
 
-    lam = 1.0 - (x2 - x1) * (y2 - y1) / (H * W)   # recompute from actual area
+    lam = 1.0 - (x2 - x1) * (y2 - y1) / (H * W)  # recompute from actual area
     return mixed, labels, labels[idx], lam
 
 
@@ -69,9 +69,9 @@ class BatchMixer:
     def __init__(self, mode: str = "both", alpha: float = 1.0, p: float = 0.5):
         if mode not in ("cutmix", "mixup", "both"):
             raise ValueError(f"mode must be 'cutmix', 'mixup', or 'both', got '{mode}'")
-        self.mode  = mode
+        self.mode = mode
         self.alpha = alpha
-        self.p     = p
+        self.p = p
 
     def __call__(self, images: torch.Tensor, labels: torch.Tensor):
         """Returns (mixed_images, label_a, label_b, lam).
@@ -95,8 +95,10 @@ if __name__ == "__main__":
     B, C, H, W = 4, 3, 32, 32
     images = torch.rand(B, C, H, W)
     labels = torch.randint(0, 10, (B,))
-    mixer  = BatchMixer(mode="both", alpha=1.0, p=1.0)
+    mixer = BatchMixer(mode="both", alpha=1.0, p=1.0)
 
     for _ in range(3):
         mixed, la, lb, lam = mixer(images, labels)
-        print(f"  lam={lam:.3f}  mixed shape={mixed.shape}  label_a={la.tolist()}  label_b={lb.tolist()}")
+        print(
+            f"  lam={lam:.3f}  mixed shape={mixed.shape}  label_a={la.tolist()}  label_b={lb.tolist()}"
+        )
