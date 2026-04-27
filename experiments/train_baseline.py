@@ -249,6 +249,13 @@ def main(cfg: dict):
     # Loss CL
     lps_scheduler = None
     if cfg.get("tier_schedule") == "lps":
+        if cfg.get("val_split", 0.1) == 0.0:
+            raise ValueError(
+                "LPS requires a validation set to track loss plateaus. "
+                "Set --val_split 0.1 (or any value > 0) when using --tier_schedule lps. "
+                "Running LPS with val_split=0.0 would silently use val_loss=0.0 every epoch "
+                "and advance tiers immediately at min_epochs — completely wrong behavior."
+            )
         from training.losses import LossPlateauScheduler
 
         lps_scheduler = LossPlateauScheduler(
