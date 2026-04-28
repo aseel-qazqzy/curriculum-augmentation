@@ -223,6 +223,8 @@ class WandbTools:
                 "—",
                 "—",
                 None,
+                "—",
+                "—",
                 "Paper Baseline",
             ],
             [
@@ -236,6 +238,8 @@ class WandbTools:
                 "—",
                 "—",
                 None,
+                "—",
+                "—",
                 "Paper Baseline",
             ],
             [
@@ -249,6 +253,8 @@ class WandbTools:
                 "—",
                 "—",
                 None,
+                "—",
+                "—",
                 "Paper Baseline",
             ],
             [
@@ -262,6 +268,8 @@ class WandbTools:
                 "—",
                 "—",
                 None,
+                "—",
+                "—",
                 "Paper Baseline",
             ],
             [
@@ -275,6 +283,8 @@ class WandbTools:
                 "—",
                 "—",
                 None,
+                "—",
+                "—",
                 "Paper Baseline",
             ],
             [
@@ -288,6 +298,8 @@ class WandbTools:
                 "—",
                 "—",
                 None,
+                "—",
+                "—",
                 "Paper Baseline",
             ],
         ]
@@ -327,6 +339,10 @@ class WandbTools:
             test_top1 = summary.get("test_top1")
             test_top5 = summary.get("test_top5")
             best_ep = summary.get("best_epoch")
+            total_min = summary.get("total_minutes")
+            date_s = config.get("run_ts") or (
+                run.created_at[:10] if run.created_at else "—"
+            )
 
             val_s = f"{val_acc:.2f}" if val_acc is not None else "—"
             t1_s = f"{test_top1:.2f}" if test_top1 is not None else "—"
@@ -336,6 +352,7 @@ class WandbTools:
                 if val_s != "—" and t1_s != "—"
                 else "—"
             )
+            time_s = f"{total_min:.0f} min" if total_min is not None else "—"
 
             rows.append(
                 [
@@ -349,6 +366,8 @@ class WandbTools:
                     t5_s,
                     gap_s,
                     best_ep,
+                    time_s,
+                    date_s,
                     exp_type,
                 ]
             )
@@ -369,6 +388,8 @@ class WandbTools:
             "Test Top-5 (%)",
             "Val-Test Gap",
             "Best Epoch",
+            "Time",
+            "Date",
             "Type",
         ]
 

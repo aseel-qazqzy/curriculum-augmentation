@@ -7,6 +7,7 @@ import os
 import sys
 import argparse
 import time
+from datetime import datetime
 from pathlib import Path
 import torch
 import torch.nn as nn
@@ -123,6 +124,7 @@ def main(cfg: dict):
     if not cfg["experiment_name"].endswith(f"_{dataset}"):
         cfg["experiment_name"] = f"{cfg['experiment_name']}_{dataset}"
 
+    cfg["run_ts"] = datetime.now().strftime("%Y-%m-%d %H:%M")
     tee = setup_logging(cfg)
     set_seed(cfg["seed"])
     device = get_device()
@@ -211,7 +213,7 @@ def main(cfg: dict):
             _wandb_cfg["scheduler_type"] = "none"
         wandb.init(
             project="curriculum-augmentation",
-            name=cfg["experiment_name"],
+            name=f"{cfg['experiment_name']}  [{cfg['run_ts']}]",
             config=_wandb_cfg,
             group=_group,
             tags=[_group, _label],
