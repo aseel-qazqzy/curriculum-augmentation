@@ -38,25 +38,30 @@ SKIP_DISPLAY_NAMES = {"results-comparison-table", "analysis-figures"}
 
 # ── Run name → clean display name ─────────────────────────────────────────────
 def get_display_name(run_name: str, config: dict) -> str:
+    from models.registry import MODEL_DISPLAY_NAMES
+
     aug = config.get("augmentation", "")
     sched = config.get("tier_schedule", "")
     mixing = config.get("mix_mode", "")
+    raw_model = config.get("model", "")
+    model = MODEL_DISPLAY_NAMES.get(raw_model, raw_model)
+    prefix = f"{model} | " if model else ""
 
     if aug == "none":
-        return "No Augmentation"
+        return f"{prefix}No Augmentation"
     if aug == "static":
-        return "Static"
+        return f"{prefix}Static"
     if aug == "static_mixing":
-        return "Static + Mixing"
+        return f"{prefix}Static + Mixing"
     if aug == "random":
-        return "Random Augmentation"
+        return f"{prefix}Random Augmentation"
     if aug == "randaugment":
-        return "RandAugment"
+        return f"{prefix}RandAugment"
     if aug == "tiered_curriculum":
         s = sched.upper() if sched else "ETS"
         if mixing in (None, "none", ""):
-            return f"{s} — No Mixing"
-        return f"{s} + Mixing"
+            return f"{prefix}{s} — No Mixing"
+        return f"{prefix}{s} + Mixing"
     return run_name
 
 

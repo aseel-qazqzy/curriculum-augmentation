@@ -16,6 +16,19 @@ Available models:
 
 import torch.nn as nn
 import models.baseline_cnn as custom_cnn
+
+# Single source of truth for model display names used in W&B and plots.
+# Add an entry here whenever a new model is added to get_model().
+MODEL_DISPLAY_NAMES: dict[str, str] = {
+    "baseline_cnn": "CNN",
+    "resnet18": "ResNet-18",
+    "resnet50": "ResNet-50",
+    "wideresnet": "WRN-28-10",
+    "wrn28_10": "WRN-28-10",
+    "wrn16_8": "WRN-16-8",
+    "pyramidnet": "PyramidNet-110",
+    "pyramidnet272": "PyramidNet-272",
+}
 import models.baseline_resnet18 as resnet18_mod
 import models.baseline_resnet50 as resnet50_mod
 import models.wideresnet as wrn_mod
