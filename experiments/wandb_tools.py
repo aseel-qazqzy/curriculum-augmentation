@@ -292,29 +292,22 @@ class WandbTools:
             ],
         ]
 
-        TYPE_MAP = {
-            "No Augmentation": "Baseline",
-            "Static": "Baseline",
-            "Static + Mixing": "Baseline",
-            "Random Augmentation": "Baseline",
-            "RandAugment": "Baseline",
-        }
+        BASELINE_AUGS = {"none", "static", "static_mixing", "random", "randaugment"}
 
         runs = self._get_finished_runs()
         rows = []
+
+        from models.registry import MODEL_DISPLAY_NAMES
 
         for run in runs:
             display = run.display_name or run.name
             config = run.config
             summary = run.summary
             aug = config.get("augmentation", "")
-            sched = config.get("tier_schedule", "—")
             mixing = config.get("mix_mode", "—")
-            model = {
-                "resnet50": "ResNet-50",
-                "wideresnet": "WideResNet-28-10",
-                "resnet18": "ResNet-18",
-            }.get(config.get("model", ""), config.get("model", "—"))
+            model = MODEL_DISPLAY_NAMES.get(
+                config.get("model", ""), config.get("model", "—")
+            )
             dataset = (
                 config.get("dataset", "cifar100")
                 .upper()
@@ -328,7 +321,7 @@ class WandbTools:
             else:
                 schedule = "—"
                 mix_show = "Yes" if "mixing" in aug else "—"
-                exp_type = TYPE_MAP.get(display, "Baseline")
+                exp_type = "Baseline" if aug in BASELINE_AUGS else "Other"
 
             val_acc = summary.get("best_val_acc")
             test_top1 = summary.get("test_top1")
