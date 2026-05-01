@@ -72,10 +72,13 @@ def build_transforms(cfg: dict):
     elif aug == "tiered_curriculum":
         schedule = cfg.get("tier_schedule", "ets")
         if schedule == "egs":
-            raise NotImplementedError(
-                f"tier_schedule='{schedule}' is not yet implemented. "
-                f"LPS and EGS are planned for June. Use --tier_schedule ets."
+            from augmentations.curriculum import CurriculumTransform
+
+            curriculum_transform = CurriculumTransform(
+                dataset=dataset,
+                base_difficulty=0.0,
             )
+            return curriculum_transform, curriculum_transform.get_val_transform()
 
         from augmentations.policies import ThreeTierCurriculumAugmentation
 
@@ -108,10 +111,17 @@ def main(cfg: dict):
             schedule = cfg.get("tier_schedule", "ets")
             mix_mode = cfg.get("mix_mode", "both")
             mix_tag = "nomix" if mix_mode == "none" else f"mix_{mix_mode}"
-            cfg["experiment_name"] = (
-                f"{cfg['model']}_tiered_{schedule}_{mix_tag}"
-                f"_{cfg['optimizer']}_{cfg['scheduler']}"
-            )
+            if schedule == "egs":
+                freq = cfg.get("egs_update_freq", 10)
+                cfg["experiment_name"] = (
+                    f"{cfg['model']}_tiered_egs_freq{freq}_{mix_tag}"
+                    f"_{cfg['optimizer']}_{cfg['scheduler']}"
+                )
+            else:
+                cfg["experiment_name"] = (
+                    f"{cfg['model']}_tiered_{schedule}_{mix_tag}"
+                    f"_{cfg['optimizer']}_{cfg['scheduler']}"
+                )
         else:
             cfg["experiment_name"] = (
                 f"{cfg['model']}_{aug}_{cfg['optimizer']}_{cfg['scheduler']}"
@@ -159,34 +169,63 @@ def main(cfg: dict):
         s1 = ceil * _TIER_STRENGTH_FRACS[1]
         s2 = ceil * _TIER_STRENGTH_FRACS[2]
         s3 = ceil * _TIER_STRENGTH_FRACS[3]
-        is_lps = cfg.get("tier_schedule") == "lps"
-        t1_str = "loss-guided" if is_lps else f"ep   1-{t1:2d}"
-        t2_str = "loss-guided" if is_lps else f"ep {t1 + 1:2d}-{t2:2d}"
-        t3_str = "loss-guided" if is_lps else f"ep {t2 + 1:2d}-end"
-        print(
-            f"  Tier 1 ({t1_str}): flip, crop, translate_x/y"
-            f"  |  sample {_TIER_N_OPS[1]}/4  |  strength {s1:.2f}"
-        )
-        print(
-            f"  Tier 2 ({t2_str}): +color_jitter, rotation, shear, auto_contrast, equalize, sharpness"
-            f"  |  sample {_TIER_N_OPS[2]}/10  |  strength {s2:.2f} (ramp {_STRENGTH_RAMP_EPOCHS} ep)"
-        )
-        print(
-            f"  Tier 3 ({t3_str}): +grayscale, cutout, contrast, brightness"
-            f"  |  sample {_TIER_N_OPS[3]}/14  |  strength {s3:.2f} (ramp {_STRENGTH_RAMP_EPOCHS} ep)"
-        )
-        mix_mode = cfg.get("mix_mode", "both")
-        if mix_mode != "none":
-            ramp_str = "ramp enabled" if cfg.get("mix_ramp", False) else "ramp disabled"
+        schedule = cfg.get("tier_schedule", "ets")
+        is_lps = schedule == "lps"
+        is_egs = schedule == "egs"
+        if is_egs:
             print(
-                f"  Mixing      : {mix_mode}  alpha={cfg.get('mix_alpha', 1.0)}  "
-                f"p={cfg.get('mix_prob', 0.5)}  (Tier 3 only | {ramp_str})"
+                f"  Tier 1 (entropy-guided, per-sample): flip, crop, translate_x/y"
+                f"  |  difficulty {s1:.2f}"
             )
-        if cfg.get("tier_schedule") == "lps":
             print(
-                f"  LPS         : tau={cfg['lps_tau']}  window={cfg['lps_window']}  "
-                f"min_epochs_per_tier={cfg['lps_min_epochs']}"
+                f"  Tier 2 (entropy-guided, per-sample): +color_jitter, rotation, shear, auto_contrast, equalize, sharpness"
+                f"  |  difficulty {s2:.2f}"
             )
+            print(
+                f"  Tier 3 (entropy-guided, per-sample): +grayscale, cutout, contrast, brightness"
+                f"  |  difficulty {s3:.2f}"
+            )
+            mix_mode = cfg.get("mix_mode", "both")
+            if mix_mode != "none":
+                print(
+                    f"  Mixing      : {mix_mode}  alpha={cfg.get('mix_alpha', 1.0)}  "
+                    f"p={cfg.get('mix_prob', 0.5)}  (activates when 50% samples reach Tier 3)"
+                )
+            print(
+                f"  EGS         : update_freq={cfg.get('egs_update_freq', 10)} epochs  "
+                f"| strength={cfg.get('fixed_strength', 0.7)}  "
+                f"| all samples start Tier 1"
+            )
+        else:
+            t1_str = "loss-guided" if is_lps else f"ep   1-{t1:2d}"
+            t2_str = "loss-guided" if is_lps else f"ep {t1 + 1:2d}-{t2:2d}"
+            t3_str = "loss-guided" if is_lps else f"ep {t2 + 1:2d}-end"
+            print(
+                f"  Tier 1 ({t1_str}): flip, crop, translate_x/y"
+                f"  |  sample {_TIER_N_OPS[1]}/4  |  strength {s1:.2f}"
+            )
+            print(
+                f"  Tier 2 ({t2_str}): +color_jitter, rotation, shear, auto_contrast, equalize, sharpness"
+                f"  |  sample {_TIER_N_OPS[2]}/10  |  strength {s2:.2f} (ramp {_STRENGTH_RAMP_EPOCHS} ep)"
+            )
+            print(
+                f"  Tier 3 ({t3_str}): +grayscale, cutout, contrast, brightness"
+                f"  |  sample {_TIER_N_OPS[3]}/14  |  strength {s3:.2f} (ramp {_STRENGTH_RAMP_EPOCHS} ep)"
+            )
+            mix_mode = cfg.get("mix_mode", "both")
+            if mix_mode != "none":
+                ramp_str = (
+                    "ramp enabled" if cfg.get("mix_ramp", False) else "ramp disabled"
+                )
+                print(
+                    f"  Mixing      : {mix_mode}  alpha={cfg.get('mix_alpha', 1.0)}  "
+                    f"p={cfg.get('mix_prob', 0.5)}  (Tier 3 only | {ramp_str})"
+                )
+            if is_lps:
+                print(
+                    f"  LPS         : tau={cfg['lps_tau']}  window={cfg['lps_window']}  "
+                    f"min_epochs_per_tier={cfg['lps_min_epochs']}"
+                )
     if cfg["augmentation"] == "static_mixing":
         mix_mode = cfg.get("mix_mode", "both")
         print(
@@ -232,14 +271,92 @@ def main(cfg: dict):
         loader_fn = get_tiny_imagenet_loaders
     else:
         loader_fn = get_cifar10_loaders
+    # EGS: base dataset must return raw PIL images — CurriculumTransform handles
+    # ToTensor + Normalize internally. Passing val_transform (normalised tensors)
+    # corrupts images when CurriculumDataset converts tensor back to PIL.
+    # Lambda identity keeps PIL images unchanged; None triggers static aug default.
+    from torchvision.transforms import Lambda as _Lambda
+
+    _loader_train_tf = (
+        _Lambda(lambda x: x) if cfg.get("tier_schedule") == "egs" else train_transform
+    )
     train_loader, val_loader, test_loader = loader_fn(
         root=cfg["data_root"],
         batch_size=cfg["batch_size"],
         val_split=cfg["val_split"],
-        train_transform=train_transform,
+        train_transform=_loader_train_tf,
         test_transform=val_transform,
         debug=cfg.get("debug", False),
     )
+
+    # EGS: wrap raw train dataset in CurriculumDataset for per-sample difficulty
+    egs_state = None
+    if cfg.get("tier_schedule") == "egs":
+        import numpy as np
+        from torch.utils.data import DataLoader as _DataLoader
+        from augmentations.curriculum import CurriculumDataset
+        from experiments.compute_entropy import build_raw_entropy_loader
+
+        n_train = len(train_loader.dataset)
+
+        curriculum_dataset = CurriculumDataset(
+            base_dataset=train_loader.dataset,  # raw Subset (no augmentation)
+            transform=train_transform,  # CurriculumTransform
+            default_difficulty=0.28,  # everyone starts at Tier 1 strength
+        )
+
+        max_tier_reached = np.ones(n_train, dtype=np.int32)
+
+        raw_entropy_loader = build_raw_entropy_loader(
+            dataset=cfg["dataset"],
+            root=cfg["data_root"],
+            val_split=cfg["val_split"],
+            batch_size=cfg["batch_size"],
+            debug=cfg.get("debug", False),
+        )
+
+        def _collate_strip_idx(batch):
+            imgs = torch.stack([b[0] for b in batch])
+            lbls = torch.tensor([b[1] for b in batch])
+            return imgs, lbls
+
+        # num_workers=0: difficulty updates in main process must be
+        # visible immediately — workers spawn their own copies and miss updates
+        train_loader = _DataLoader(
+            curriculum_dataset,
+            batch_size=cfg["batch_size"],
+            shuffle=True,
+            num_workers=0,
+            pin_memory=torch.cuda.is_available(),
+            collate_fn=_collate_strip_idx,
+        )
+
+        # Fallback epochs: if entropy thresholds are too conservative for this
+        # model/dataset, force advancement at ETS-equivalent boundaries so the
+        # full curriculum is always used regardless of model capacity
+        _total_ep = cfg["epochs"]
+        _t1 = cfg.get("tier_t1", 0.20)
+        _t2 = cfg.get("tier_t2", 0.45)
+        _force_t2 = int(_t1 * _total_ep) if 0.0 < _t1 < 1.0 else int(_t1)
+        _force_t3 = int(_t2 * _total_ep) if 0.0 < _t2 < 1.0 else int(_t2)
+
+        egs_state = {
+            "curriculum_dataset": curriculum_dataset,
+            "max_tier_reached": max_tier_reached,
+            "raw_entropy_loader": raw_entropy_loader,
+            "update_freq": cfg.get("egs_update_freq", 10),
+            "strength": cfg.get("fixed_strength", 0.7),
+            "num_classes": {"cifar100": 100, "tiny_imagenet": 200}.get(
+                cfg["dataset"], 10
+            ),
+            "force_t2_epoch": _force_t2,  # fallback: force Tier 2 at ETS t1
+            "force_t3_epoch": _force_t3,  # fallback: force Tier 3 at ETS t2
+        }
+
+        print(
+            f"  EGS: CurriculumDataset ready | {n_train:,} samples | "
+            f"entropy update every {egs_state['update_freq']} epochs"
+        )
 
     num_classes = {"cifar100": 100, "tiny_imagenet": 200}.get(cfg["dataset"], 10)
     model = get_model(cfg["model"], num_classes=num_classes).to(device)
@@ -327,11 +444,42 @@ def main(cfg: dict):
         )
 
     for epoch in range(start_epoch, cfg["epochs"] + 1):
+        # EGS: recompute per-sample entropy and update tier assignments
+        if egs_state is not None and epoch % egs_state["update_freq"] == 0:
+            from training.trainer import compute_training_entropy
+            from experiments.compute_entropy import assign_egs_difficulties
+
+            entropy_scores = compute_training_entropy(
+                model,
+                egs_state["raw_entropy_loader"],
+                device,
+            )
+            egs_state["max_tier_reached"], difficulties = assign_egs_difficulties(
+                entropy_scores,
+                egs_state["max_tier_reached"],
+                strength=egs_state["strength"],
+                num_classes=egs_state["num_classes"],
+                epoch=epoch,
+                force_t2_epoch=egs_state["force_t2_epoch"],
+                force_t3_epoch=egs_state["force_t3_epoch"],
+            )
+            egs_state["curriculum_dataset"].set_difficulties(difficulties)
+
         if hasattr(train_transform, "set_epoch"):
             train_transform.set_epoch(epoch)
 
         if cfg["augmentation"] == "static_mixing":
             active_mixer = mixer  # always on from epoch 1
+        elif egs_state is not None and mixer is not None:
+            # EGS mixing: activate when 50% of samples have reached Tier 3
+            n_tier3 = int((egs_state["max_tier_reached"] == 3).sum())
+            n_total = len(egs_state["max_tier_reached"])
+            if n_tier3 >= n_total // 2:
+                mixer.p = cfg.get("mix_prob", 0.5)
+                mixer.alpha = cfg.get("mix_alpha", 1.0)
+                active_mixer = mixer
+            else:
+                active_mixer = None
         elif mixer is not None and hasattr(train_transform, "mix_scale"):
             scale = train_transform.mix_scale()  # 0→1 at Tier 3 boundary
             if scale <= 0.0:
@@ -407,15 +555,27 @@ def main(cfg: dict):
 
         if epoch % cfg["log_every"] == 0 or epoch == 1 or cfg.get("debug"):
             elapsed = time.time() - start_time
-            tier_str = (
-                f" | {train_transform.tier_label()}"
-                if hasattr(train_transform, "tier_label")
-                else ""
-            )
-            if active_mixer is not None:
-                tier_str += f" + mix:{cfg.get('mix_mode', 'both')}"
-            elif mixer is not None:
-                tier_str += " + mix:pending"
+            if egs_state is not None:
+                mtr = egs_state["max_tier_reached"]
+                n1 = int((mtr == 1).sum())
+                n2 = int((mtr == 2).sum())
+                n3 = int((mtr == 3).sum())
+                mix_tag = (
+                    f"mix:{cfg.get('mix_mode', 'both')}"
+                    if active_mixer is not None
+                    else f"mix:pending({n3}/{len(mtr)} in T3)"
+                )
+                tier_str = f" | EGS T1:{n1} T2:{n2} T3:{n3} | {mix_tag}"
+            else:
+                tier_str = (
+                    f" | {train_transform.tier_label()}"
+                    if hasattr(train_transform, "tier_label")
+                    else ""
+                )
+                if active_mixer is not None:
+                    tier_str += f" + mix:{cfg.get('mix_mode', 'both')}"
+                elif mixer is not None:
+                    tier_str += " + mix:pending"
             if use_val:
                 print(
                     f"Epoch [{epoch:>3}/{cfg['epochs']}] "
@@ -684,6 +844,12 @@ def parse_args():
         help="LPS: minimum epochs per tier before advancing (default: 10)",
     )
     parser.add_argument(
+        "--egs_update_freq",
+        type=int,
+        default=None,
+        help="EGS: recompute per-sample entropy every N epochs (default: 10)",
+    )
+    parser.add_argument(
         "--seed",
         type=int,
         default=None,
@@ -724,6 +890,7 @@ if __name__ == "__main__":
         "lps_tau",
         "lps_window",
         "lps_min_epochs",
+        "egs_update_freq",
         "seed",
     ]:
         val = getattr(args, key, None)
@@ -732,7 +899,8 @@ if __name__ == "__main__":
 
     if args.debug:
         cfg["debug"] = True
-        cfg["epochs"] = 2
+        if args.epochs is None:  # only default to 2 if user didn't specify
+            cfg["epochs"] = 2
     if args.use_wandb:
         cfg["use_wandb"] = True
     if args.use_amp:

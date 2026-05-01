@@ -32,7 +32,7 @@ def train_one_epoch(
 
         optimizer.zero_grad()
         with torch.autocast(device_type=ac_type, enabled=use_amp):
-            outputs = model(images) # Forward pass
+            outputs = model(images)  # Forward pass
             if lam >= 1.0 - 1e-6:
                 loss = criterion(outputs, label_a)
             else:
@@ -169,6 +169,55 @@ def evaluate(model, loader, criterion, device):
         total += labels.size(0)
 
     return total_loss / total, correct1 / total, correct5 / total
+
+
+@torch.no_grad()
+def compute_training_entropy(model, raw_loader, device):
+    """
+    Compute per-sample prediction entropy using the current model state.
+
+    Called every egs_update_freq epochs during EGS training to update
+    per-sample tier assignments. Uses a raw (no-augmentation) loader so
+    entropy reflects genuine sample difficulty, not augmentation randomness.
+
+    Args:
+        model      : current model (mid-training, weights not modified)
+        raw_loader : DataLoader with NO augmentation — ToTensor + Normalize only
+                     must use shuffle=False to preserve sample index order
+        device     : training device
+
+    Returns:
+        entropy_scores : np.ndarray shape [N_train]
+                         entropy_scores[i] = H(sample i) in [0, log(num_classes)]
+    """
+    import numpy as np
+
+    model.eval()
+    t0 = time.time()
+
+    N = len(raw_loader.dataset)
+    entropy_scores = np.zeros(N, dtype=np.float32)
+    pos = 0
+
+    for images, _ in raw_loader:
+        images = images.to(device)
+        probs = torch.softmax(model(images).float(), dim=1)
+        H = -(probs * torch.log(probs.clamp(min=1e-8))).sum(dim=1)
+        n = H.size(0)
+        entropy_scores[pos : pos + n] = H.cpu().numpy()
+        pos += n
+
+    model.train()  # restore training mode before returning
+
+    elapsed = time.time() - t0
+    print(
+        f"  EGS entropy update: "
+        f"mean={entropy_scores.mean():.4f}  "
+        f"range=[{entropy_scores.min():.4f}, {entropy_scores.max():.4f}]  "
+        f"({elapsed:.1f}s)"
+    )
+
+    return entropy_scores
 
 
 def run_training(

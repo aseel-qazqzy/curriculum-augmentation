@@ -48,4 +48,6 @@ BASE_CONFIG = {
     "lps_tau": 0.02,
     "lps_window": 5,
     "lps_min_epochs": 10,
+    # Entropy-Guided Scheduling (EGS)
+    "egs_update_freq": 10,  # recompute per-sample entropy every N epochs
 }

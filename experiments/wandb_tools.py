@@ -59,9 +59,10 @@ def get_display_name(run_name: str, config: dict) -> str:
         return f"{prefix}RandAugment"
     if aug == "tiered_curriculum":
         s = sched.upper() if sched else "ETS"
+        freq_tag = f" (freq={config.get('egs_update_freq', 10)})" if s == "EGS" else ""
         if mixing in (None, "none", ""):
-            return f"{prefix}{s} — No Mixing"
-        return f"{prefix}{s} + Mixing"
+            return f"{prefix}{s}{freq_tag} — No Mixing"
+        return f"{prefix}{s}{freq_tag} + Mixing"
     return run_name
 
 
@@ -76,8 +77,11 @@ _GROUP_RULES = [
     ("_ets_nomix_", "M", "ETS No Mix"),
     ("_lps_mix_both_", "M", "LPS + Both Mixing"),
     ("_lps_nomix_", "M", "LPS No Mix"),
+    ("_egs_mix_both_", "M", "EGS + Both Mixing"),
+    ("_egs_nomix_", "M", "EGS No Mix"),
     ("_lps_", "A_LPS", "LPS Ablation"),
     ("_ets_", "A_ETS", "ETS Ablation"),
+    ("_egs_", "A_EGS", "EGS Ablation"),
 ]
 
 
