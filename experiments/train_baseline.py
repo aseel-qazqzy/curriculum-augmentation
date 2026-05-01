@@ -239,7 +239,7 @@ def main(cfg: dict):
 
     if cfg.get("use_wandb"):
         import wandb
-        from experiments.upload_to_wandb import get_group_and_label
+        from experiments.wandb_tools import _get_group_and_label as get_group_and_label
 
         _group, _label = get_group_and_label(cfg["experiment_name"])
         _name_lower = cfg["experiment_name"].lower()
