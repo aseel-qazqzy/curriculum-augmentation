@@ -126,7 +126,13 @@ class PyramidNet(nn.Module):
         num_classes: 10 for CIFAR-10, 100 for CIFAR-100.
     """
 
-    def __init__(self, depth: int = 110, alpha: int = 48, num_classes: int = 10):
+    def __init__(
+        self,
+        depth: int = 110,
+        alpha: int = 48,
+        num_classes: int = 10,
+        dropout: float = 0.0,
+    ):
         super().__init__()
 
         assert (depth - 2) % 6 == 0, (
@@ -155,6 +161,7 @@ class PyramidNet(nn.Module):
 
         final_channels = self._widths[-1]
         self.bn_final = nn.BatchNorm2d(final_channels)
+        self.dropout = nn.Dropout(p=dropout)
         self.fc = nn.Linear(final_channels, num_classes)
 
         self._init_weights()
@@ -191,6 +198,7 @@ class PyramidNet(nn.Module):
         out = F.relu(self.bn_final(out), inplace=True)
         out = F.adaptive_avg_pool2d(out, 1)
         out = out.view(out.size(0), -1)
+        out = self.dropout(out)
         return self.fc(out)
 
 
@@ -220,9 +228,9 @@ def get_pyramidnet110(num_classes: int = 10) -> PyramidNet:
     return PyramidNet(depth=110, alpha=48, num_classes=num_classes)
 
 
-def get_pyramidnet272(num_classes: int = 10) -> PyramidNet:
+def get_pyramidnet272(num_classes: int = 10, dropout: float = 0.3) -> PyramidNet:
     """PyramidNet-272 (α=200) — exact model from RandAugment paper Table 2."""
-    return PyramidNet(depth=272, alpha=200, num_classes=num_classes)
+    return PyramidNet(depth=272, alpha=200, num_classes=num_classes, dropout=dropout)
 
 
 # QUICK TEST

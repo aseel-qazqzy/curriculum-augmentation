@@ -155,7 +155,7 @@ def evaluate(model, loader, criterion, device):
         images, labels = batch[0], batch[1]
         images, labels = images.to(device), labels.to(device)
 
-        outputs = model(images)
+        outputs = model(images).float()
         loss = criterion(outputs, labels)
         total_loss += loss.item() * images.size(0)
 
