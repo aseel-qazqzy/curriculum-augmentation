@@ -48,6 +48,12 @@ BASE_CONFIG = {
     "lps_tau": 0.02,
     "lps_window": 5,
     "lps_min_epochs": 10,
+    # Label smoothing (0.0 = disabled — plain CrossEntropy; existing ETS/LPS runs unchanged)
+    "label_smoothing": 0.0,
     # Entropy-Guided Scheduling (EGS)
     "egs_update_freq": 10,  # recompute per-sample entropy every N epochs
+    "egs_min_epochs_per_tier": 20,  # min epochs in a tier before a sample can advance
+    "egs_max_epochs_per_tier": 40,  # epochs stuck in a tier before force-bump (0=disabled)
+    "egs_mix_threshold": 0.75,  # fraction of samples in T3 required to activate mixing
+    "egs_mix_min_epoch": 30,  # earliest epoch mixing can activate regardless of tier counts
 }

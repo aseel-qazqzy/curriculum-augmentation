@@ -102,77 +102,101 @@ def build_raw_entropy_loader(
 def assign_egs_difficulties(
     entropy_scores: np.ndarray,
     max_tier_reached: np.ndarray,
+    tier_advance_epoch: np.ndarray,
     strength: float = 0.7,
     num_classes: int = 100,
     epoch: int = 0,
-    force_t2_epoch: int = 9999,
-    force_t3_epoch: int = 9999,
-) -> tuple[np.ndarray, torch.Tensor]:
+    egs_min_epochs_per_tier: int = 20,
+    egs_max_epochs_per_tier: int = 40,
+) -> tuple[np.ndarray, np.ndarray, torch.Tensor]:
     """
     Convert entropy scores to per-sample difficulty values for CurriculumDataset.
 
-    Uses entropy THRESHOLD assignment — a sample advances only when its entropy
-    is genuinely low enough. Safety fallback forces advancement at ETS-equivalent
-    epoch boundaries so the full curriculum is used regardless of model capacity
-    or how conservative the entropy thresholds are.
+    Per-sample advancement is governed by two constraints:
+      - Min time: a sample must spend at least egs_min_epochs_per_tier epochs in
+        its current tier before it is eligible to advance (prevents the first EGS
+        update from rushing most samples into Tier 3).
+      - Max time: a sample that has been stuck for >= egs_max_epochs_per_tier epochs
+        is force-bumped one tier, regardless of its entropy. This replaces the old
+        global fallback (force all samples at fixed epoch boundaries) with a
+        per-sample safety net that only fires for genuinely stuck samples.
 
-    Thresholds (fraction of maximum entropy log(num_classes)):
+    Entropy thresholds (fraction of max entropy log(num_classes)):
       Tier 2: H < 0.60 * log(C)  — moderately confident
       Tier 3: H < 0.30 * log(C)  — highly confident
 
-    Safety fallback (force_t2_epoch / force_t3_epoch):
-      At force_t2_epoch: all samples advance to at least Tier 2
-      At force_t3_epoch: all samples advance to Tier 3
-      Defaults to 9999 (disabled) — set via egs_state from tier_t1/tier_t2 config.
-
     Args:
-        entropy_scores   : np.ndarray [N] — H(x) per sample from current model
-        max_tier_reached : np.ndarray [N] — highest tier each sample has reached
-        strength         : augmentation strength ceiling (default 0.7)
-        num_classes      : number of classes — scales entropy thresholds
-        epoch            : current training epoch — used for safety fallback
-        force_t2_epoch   : force all samples to Tier 2 at this epoch
-        force_t3_epoch   : force all samples to Tier 3 at this epoch
+        entropy_scores          : np.ndarray [N] — H(x) per sample from current model
+        max_tier_reached        : np.ndarray [N] — highest tier each sample has reached
+        tier_advance_epoch      : np.ndarray [N] — epoch at which each sample was last promoted
+        strength                : augmentation strength ceiling (default 0.7)
+        num_classes             : number of classes — scales entropy thresholds
+        epoch                   : current training epoch
+        egs_min_epochs_per_tier : minimum epochs in a tier before advancement is allowed
+        egs_max_epochs_per_tier : epochs in a tier after which a sample is force-bumped
 
     Returns:
-        max_tier_reached : np.ndarray [N] — updated
-        difficulties     : torch.Tensor [N] — for CurriculumDataset.set_difficulties()
+        max_tier_reached   : np.ndarray [N] — updated (monotonically non-decreasing)
+        tier_advance_epoch : np.ndarray [N] — updated for newly promoted samples
+        difficulties       : torch.Tensor [N] — for CurriculumDataset.set_difficulties()
     """
     log_C = np.log(num_classes)
 
-    # Entropy threshold assignment — only advance when genuinely confident
-    new_tiers = np.ones(len(entropy_scores), dtype=np.int32)
-    new_tiers[entropy_scores < 0.60 * log_C] = 2
-    new_tiers[entropy_scores < 0.30 * log_C] = 3
+    # Entropy-based candidate tier for each sample
+    candidate_tiers = np.ones(len(entropy_scores), dtype=np.int32)
+    candidate_tiers[entropy_scores < 0.60 * log_C] = 2
+    candidate_tiers[entropy_scores < 0.30 * log_C] = 3
 
-    # Safety fallback: force advancement at ETS-equivalent boundaries
-    # so any model/dataset is guaranteed to use the full curriculum
-    if epoch >= force_t3_epoch:
-        new_tiers[:] = 3
-        print(
-            f"  EGS fallback: all samples forced to Tier 3 (epoch {epoch} >= {force_t3_epoch})"
-        )
-    elif epoch >= force_t2_epoch:
-        new_tiers = np.maximum(new_tiers, 2)
-        print(
-            f"  EGS fallback: all samples at least Tier 2 (epoch {epoch} >= {force_t2_epoch})"
-        )
+    # Per-sample time spent in current tier (epochs since last promotion)
+    time_in_tier = epoch - tier_advance_epoch  # [N]
 
-    # Monotonic: only advance, never retreat
-    max_tier_reached = np.maximum(max_tier_reached, new_tiers)
+    # Max-time bump: samples stuck too long get bumped one tier regardless of entropy.
+    # This is per-sample — only genuinely stuck samples are affected.
+    if egs_max_epochs_per_tier > 0:
+        stuck = (time_in_tier >= egs_max_epochs_per_tier) & (max_tier_reached < 3)
+        stuck_and_not_advancing = stuck & (candidate_tiers <= max_tier_reached)
+        candidate_tiers[stuck_and_not_advancing] = np.minimum(
+            max_tier_reached[stuck_and_not_advancing] + 1, 3
+        )
+        n_bumped = int(stuck_and_not_advancing.sum())
+        if n_bumped > 0:
+            print(
+                f"  EGS max-time bump: {n_bumped:,} samples force-promoted "
+                f"(>{egs_max_epochs_per_tier} epochs in tier)"
+            )
+
+    # Min-time gate: only advance samples that have spent enough time in their tier
+    can_advance = time_in_tier >= egs_min_epochs_per_tier
+
+    # A sample advances if: entropy warrants it AND min time has elapsed (or max-time bump)
+    will_advance = can_advance & (candidate_tiers > max_tier_reached)
+
+    # Monotonic update
+    new_max_tier = max_tier_reached.copy()
+    new_max_tier[will_advance] = candidate_tiers[will_advance]
+
+    # Record the epoch of promotion for newly advanced samples
+    new_tier_advance_epoch = tier_advance_epoch.copy()
+    new_tier_advance_epoch[will_advance] = epoch
 
     tier_to_diff = {1: strength * 0.40, 2: strength * 0.70, 3: strength * 1.00}
-    difficulties = np.vectorize(tier_to_diff.get)(max_tier_reached)
+    difficulties = np.vectorize(tier_to_diff.get)(new_max_tier)
 
-    n1 = int((max_tier_reached == 1).sum())
-    n2 = int((max_tier_reached == 2).sum())
-    n3 = int((max_tier_reached == 3).sum())
+    n1 = int((new_max_tier == 1).sum())
+    n2 = int((new_max_tier == 2).sum())
+    n3 = int((new_max_tier == 3).sum())
     pct3 = n3 / len(entropy_scores) * 100
+    n_promoted = int(will_advance.sum())
     print(
         f"  EGS tiers — Tier1: {n1:,}  Tier2: {n2:,}  Tier3: {n3:,}  ({pct3:.1f}% in T3)"
+        + (f"  [{n_promoted:,} promoted this update]" if n_promoted > 0 else "")
     )
 
-    return max_tier_reached, torch.tensor(difficulties, dtype=torch.float32)
+    return (
+        new_max_tier,
+        new_tier_advance_epoch,
+        torch.tensor(difficulties, dtype=torch.float32),
+    )
 
 
 # Load model from checkpoint

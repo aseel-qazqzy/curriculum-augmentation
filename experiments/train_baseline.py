@@ -31,6 +31,7 @@ from experiments.utils import (
 )
 from experiments.config import BASE_CONFIG
 from training.trainer import train_one_epoch, evaluate
+from training.losses import LabelSmoothingLoss
 
 
 DEFAULT_CONFIG = {
@@ -189,12 +190,15 @@ def main(cfg: dict):
             if mix_mode != "none":
                 print(
                     f"  Mixing      : {mix_mode}  alpha={cfg.get('mix_alpha', 1.0)}  "
-                    f"p={cfg.get('mix_prob', 0.5)}  (activates when 50% samples reach Tier 3)"
+                    f"p={cfg.get('mix_prob', 0.5)}  "
+                    f"(activates when {cfg.get('egs_mix_threshold', 0.75) * 100:.0f}% "
+                    f"samples reach Tier 3, min epoch {cfg.get('egs_mix_min_epoch', 30)})"
                 )
             print(
                 f"  EGS         : update_freq={cfg.get('egs_update_freq', 10)} epochs  "
-                f"| strength={cfg.get('fixed_strength', 0.7)}  "
-                f"| all samples start Tier 1"
+                f"| min_epochs_per_tier={cfg.get('egs_min_epochs_per_tier', 20)}  "
+                f"| max_epochs_per_tier={cfg.get('egs_max_epochs_per_tier', 40)}  "
+                f"| strength={cfg.get('fixed_strength', 0.7)}"
             )
         else:
             t1_str = "loss-guided" if is_lps else f"ep   1-{t1:2d}"
@@ -306,6 +310,9 @@ def main(cfg: dict):
         )
 
         max_tier_reached = np.ones(n_train, dtype=np.int32)
+        tier_advance_epoch = np.zeros(
+            n_train, dtype=np.int32
+        )  # all start T1 at epoch 0
 
         raw_entropy_loader = build_raw_entropy_loader(
             dataset=cfg["dataset"],
@@ -331,36 +338,37 @@ def main(cfg: dict):
             collate_fn=_collate_strip_idx,
         )
 
-        # Fallback epochs: if entropy thresholds are too conservative for this
-        # model/dataset, force advancement at ETS-equivalent boundaries so the
-        # full curriculum is always used regardless of model capacity
-        _total_ep = cfg["epochs"]
-        _t1 = cfg.get("tier_t1", 0.20)
-        _t2 = cfg.get("tier_t2", 0.45)
-        _force_t2 = int(_t1 * _total_ep) if 0.0 < _t1 < 1.0 else int(_t1)
-        _force_t3 = int(_t2 * _total_ep) if 0.0 < _t2 < 1.0 else int(_t2)
-
         egs_state = {
             "curriculum_dataset": curriculum_dataset,
             "max_tier_reached": max_tier_reached,
+            "tier_advance_epoch": tier_advance_epoch,
             "raw_entropy_loader": raw_entropy_loader,
             "update_freq": cfg.get("egs_update_freq", 10),
             "strength": cfg.get("fixed_strength", 0.7),
             "num_classes": {"cifar100": 100, "tiny_imagenet": 200}.get(
                 cfg["dataset"], 10
             ),
-            "force_t2_epoch": _force_t2,  # fallback: force Tier 2 at ETS t1
-            "force_t3_epoch": _force_t3,  # fallback: force Tier 3 at ETS t2
+            "min_epochs_per_tier": cfg.get("egs_min_epochs_per_tier", 20),
+            "max_epochs_per_tier": cfg.get("egs_max_epochs_per_tier", 40),
         }
 
         print(
             f"  EGS: CurriculumDataset ready | {n_train:,} samples | "
-            f"entropy update every {egs_state['update_freq']} epochs"
+            f"entropy update every {egs_state['update_freq']} epochs | "
+            f"min_epochs_per_tier={egs_state['min_epochs_per_tier']} | "
+            f"max_epochs_per_tier={egs_state['max_epochs_per_tier']}"
         )
 
     num_classes = {"cifar100": 100, "tiny_imagenet": 200}.get(cfg["dataset"], 10)
     model = get_model(cfg["model"], num_classes=num_classes).to(device)
-    criterion = nn.CrossEntropyLoss()
+
+    smoothing = cfg.get("label_smoothing", 0.0)
+    if smoothing > 0:
+        criterion = LabelSmoothingLoss(num_classes=num_classes, smoothing=smoothing)
+        print(f"  Loss        : LabelSmoothing (ε={smoothing})")
+    else:
+        criterion = nn.CrossEntropyLoss()
+        print(f"  Loss        : CrossEntropy")
 
     optimizer, _ = build_optimizer(model, cfg)
     scheduler, milestones = build_scheduler(optimizer, cfg)
@@ -454,14 +462,19 @@ def main(cfg: dict):
                 egs_state["raw_entropy_loader"],
                 device,
             )
-            egs_state["max_tier_reached"], difficulties = assign_egs_difficulties(
+            (
+                egs_state["max_tier_reached"],
+                egs_state["tier_advance_epoch"],
+                difficulties,
+            ) = assign_egs_difficulties(
                 entropy_scores,
                 egs_state["max_tier_reached"],
+                egs_state["tier_advance_epoch"],
                 strength=egs_state["strength"],
                 num_classes=egs_state["num_classes"],
                 epoch=epoch,
-                force_t2_epoch=egs_state["force_t2_epoch"],
-                force_t3_epoch=egs_state["force_t3_epoch"],
+                egs_min_epochs_per_tier=egs_state["min_epochs_per_tier"],
+                egs_max_epochs_per_tier=egs_state["max_epochs_per_tier"],
             )
             egs_state["curriculum_dataset"].set_difficulties(difficulties)
 
@@ -471,10 +484,13 @@ def main(cfg: dict):
         if cfg["augmentation"] == "static_mixing":
             active_mixer = mixer  # always on from epoch 1
         elif egs_state is not None and mixer is not None:
-            # EGS mixing: activate when 50% of samples have reached Tier 3
+            # EGS mixing: activate when egs_mix_threshold of samples reach T3
+            # AND epoch >= egs_mix_min_epoch (prevents mixing before model is stable)
             n_tier3 = int((egs_state["max_tier_reached"] == 3).sum())
             n_total = len(egs_state["max_tier_reached"])
-            if n_tier3 >= n_total // 2:
+            mix_threshold = cfg.get("egs_mix_threshold", 0.75)
+            mix_min_epoch = cfg.get("egs_mix_min_epoch", 30)
+            if n_tier3 >= int(n_total * mix_threshold) and epoch >= mix_min_epoch:
                 mixer.p = cfg.get("mix_prob", 0.5)
                 mixer.alpha = cfg.get("mix_alpha", 1.0)
                 active_mixer = mixer
@@ -850,10 +866,40 @@ def parse_args():
         help="EGS: recompute per-sample entropy every N epochs (default: 10)",
     )
     parser.add_argument(
+        "--egs_min_epochs_per_tier",
+        type=int,
+        default=None,
+        help="EGS: minimum epochs a sample must spend in a tier before advancing (default: 20)",
+    )
+    parser.add_argument(
+        "--egs_max_epochs_per_tier",
+        type=int,
+        default=None,
+        help="EGS: epochs in a tier after which sample is force-bumped one tier; 0=disabled (default: 40)",
+    )
+    parser.add_argument(
+        "--egs_mix_threshold",
+        type=float,
+        default=None,
+        help="EGS: fraction of samples in Tier 3 required to activate mixing (default: 0.75)",
+    )
+    parser.add_argument(
+        "--egs_mix_min_epoch",
+        type=int,
+        default=None,
+        help="EGS: earliest epoch at which mixing can activate regardless of tier counts (default: 30)",
+    )
+    parser.add_argument(
         "--seed",
         type=int,
         default=None,
         help="Random seed for reproducibility (default: 42)",
+    )
+    parser.add_argument(
+        "--label_smoothing",
+        type=float,
+        default=None,
+        help="Label smoothing epsilon (default: 0.0 = disabled). Does not affect ETS/LPS runs unless explicitly set.",
     )
 
     return parser.parse_args()
@@ -891,7 +937,12 @@ if __name__ == "__main__":
         "lps_window",
         "lps_min_epochs",
         "egs_update_freq",
+        "egs_min_epochs_per_tier",
+        "egs_max_epochs_per_tier",
+        "egs_mix_threshold",
+        "egs_mix_min_epoch",
         "seed",
+        "label_smoothing",
     ]:
         val = getattr(args, key, None)
         if val is not None:
