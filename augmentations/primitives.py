@@ -9,8 +9,11 @@ import random
 
 
 def random_flip(img: Image.Image, strength: float = 0.1) -> Image.Image:
-    p = 0.5 * strength
-    return TF.hflip(img) if random.random() < p else img
+    # Horizontal flip is a binary operation — strength controls whether the op is
+    # active (via tier thresholds), not how strongly it applies. Fixed p=0.5 matches
+    # standard practice (RandAugment, AutoAugment) and avoids under-flipping at low
+    # tier strengths (old formula gave p=0.14 at Tier 1, which is far too conservative).
+    return TF.hflip(img) if random.random() < 0.5 else img
 
 
 def random_crop(img: Image.Image, strength: float = 0.1) -> Image.Image:
@@ -30,12 +33,13 @@ def color_jitter(img: Image.Image, strength: float = 0.5) -> Image.Image:
 def random_rotation(img: Image.Image, strength: float = 0.5) -> Image.Image:
     max_angle = 15 * strength
     angle = random.uniform(-max_angle, max_angle)
-    return TF.rotate(img, angle, fill=0)
+    # fill=128 matches translate_x/y; avoids low-frequency black-border artifact
+    return TF.rotate(img, angle, fill=128)
 
 
 def random_shear(img: Image.Image, strength: float = 0.5) -> Image.Image:
     max_shear = 10 * strength
-    return T.RandomAffine(degrees=0, shear=max_shear)(img)
+    return T.RandomAffine(degrees=0, shear=max_shear, fill=128)(img)
 
 
 def cutout(img: Image.Image, strength: float = 1.0) -> Image.Image:
@@ -46,7 +50,11 @@ def cutout(img: Image.Image, strength: float = 1.0) -> Image.Image:
         return img
     x = random.randint(0, w - cutout_size)
     y = random.randint(0, h - cutout_size)
-    img_tensor[:, y : y + cutout_size, x : x + cutout_size] = 0.0
+    # Fill with per-channel mean rather than 0 (black). Zero fill creates a strong
+    # low-frequency edge artifact that is absent from real images; channel mean keeps
+    # the patch close to the image distribution (DeVries & Taylor 2017, Sec 4.2).
+    for c in range(img_tensor.shape[0]):
+        img_tensor[c, y : y + cutout_size, x : x + cutout_size] = img_tensor[c].mean()
     return TF.to_pil_image(img_tensor)
 
 

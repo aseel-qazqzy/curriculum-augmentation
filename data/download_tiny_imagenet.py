@@ -88,3 +88,7 @@ def _reorganize_val(val_dir: Path):
         shutil.rmtree(img_dir)
     ann_file.unlink()
     print("  val/ reorganized.")
+
+
+if __name__ == "__main__":
+    download()

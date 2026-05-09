@@ -42,7 +42,7 @@ def get_cifar10_loaders(
     val_split: float = 0.1,
     train_transform=None,
     test_transform=None,
-    num_workers: int = 0,
+    num_workers: int = 4,
     debug: bool = False,
 ):
     """
@@ -96,12 +96,15 @@ def get_cifar10_loaders(
         test_dataset = torch.utils.data.Subset(test_dataset, range(128))
 
     pin_memory = torch.cuda.is_available()
+    persistent = num_workers > 0
     train_loader = DataLoader(
         train_dataset,
         batch_size=batch_size,
         shuffle=True,
         num_workers=num_workers,
         pin_memory=pin_memory,
+        persistent_workers=persistent,
+        drop_last=True,
     )
     val_loader = (
         DataLoader(
@@ -110,6 +113,7 @@ def get_cifar10_loaders(
             shuffle=False,
             num_workers=num_workers,
             pin_memory=pin_memory,
+            persistent_workers=persistent,
         )
         if val_dataset
         else None
@@ -120,6 +124,7 @@ def get_cifar10_loaders(
         shuffle=False,
         num_workers=num_workers,
         pin_memory=pin_memory,
+        persistent_workers=persistent,
     )
 
     val_str = f"{len(val_dataset):,}" if val_dataset else "none (full-train mode)"
@@ -135,7 +140,7 @@ def get_cifar100_loaders(
     val_split: float = 0.1,
     train_transform=None,
     test_transform=None,
-    num_workers: int = 0,
+    num_workers: int = 4,
     debug: bool = False,
 ):
 
@@ -179,12 +184,15 @@ def get_cifar100_loaders(
         test_dataset = torch.utils.data.Subset(test_dataset, range(128))
 
     pin_memory = torch.cuda.is_available()
+    persistent = num_workers > 0
     train_loader = DataLoader(
         train_dataset,
         batch_size=batch_size,
         shuffle=True,
         num_workers=num_workers,
         pin_memory=pin_memory,
+        persistent_workers=persistent,
+        drop_last=True,
     )
     val_loader = (
         DataLoader(
@@ -193,6 +201,7 @@ def get_cifar100_loaders(
             shuffle=False,
             num_workers=num_workers,
             pin_memory=pin_memory,
+            persistent_workers=persistent,
         )
         if val_dataset
         else None
@@ -203,6 +212,7 @@ def get_cifar100_loaders(
         shuffle=False,
         num_workers=num_workers,
         pin_memory=pin_memory,
+        persistent_workers=persistent,
     )
 
     val_str = f"{len(val_dataset):,}" if val_dataset else "none (full-train mode)"
@@ -242,7 +252,7 @@ def get_tiny_imagenet_loaders(
     val_split: float = 0.1,
     train_transform=None,
     test_transform=None,
-    num_workers: int = 0,
+    num_workers: int = 4,
     debug: bool = False,
 ):
 
@@ -301,12 +311,15 @@ def get_tiny_imagenet_loaders(
         test_ds = torch.utils.data.Subset(test_ds, range(128))
 
     pin_memory = torch.cuda.is_available()
+    persistent = num_workers > 0
     train_loader = DataLoader(
         train_ds,
         batch_size=batch_size,
         shuffle=True,
         num_workers=num_workers,
         pin_memory=pin_memory,
+        persistent_workers=persistent,
+        drop_last=True,
     )
     val_loader = (
         DataLoader(
@@ -315,6 +328,7 @@ def get_tiny_imagenet_loaders(
             shuffle=False,
             num_workers=num_workers,
             pin_memory=pin_memory,
+            persistent_workers=persistent,
         )
         if val_ds
         else None
@@ -325,6 +339,7 @@ def get_tiny_imagenet_loaders(
         shuffle=False,
         num_workers=num_workers,
         pin_memory=pin_memory,
+        persistent_workers=persistent,
     )
 
     print(

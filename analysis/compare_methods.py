@@ -153,24 +153,54 @@ def best(h):
 # and merges them — no manual changes needed when a run is resumed under a new name.
 #
 EXPERIMENTS = [
-    # (display_label,                   checkpoint_base_name,                       color,             group)
-    # ── CIFAR-100 | ResNet-50 | FIT comparison ──────────────────────────────────────────────────────────────
+    # (display_label, checkpoint_base_name, color, group)
+    # ── CIFAR-100 | WideResNet-28-10 | seed=42 ──────────────────────────────────
     (
-        "No Augmentation (floor)",
-        "resnet50_no_aug_cifar100_v2_cifar100",
+        "No Augmentation",
+        "wideresnet_none_sgd_cosine_ep100_cifar100_s42",
         PALETTE["no_aug"],
         "floor",
     ),
     (
-        "Static Aug (all ops, epoch 1)",
-        "resnet50_static_aug_cifar100_v2_cifar100",
+        "Static Aug",
+        "wideresnet_static_sgd_cosine_ep100_cifar100_s42",
         PALETTE["static"],
         "baseline",
     ),
     (
-        "Tiered CL (3-tier progressive)",
-        "resnet50_tiered_curriculum_cifar100",
+        "Static + Mixing",
+        "wideresnet_static_mixing_sgd_cosine_ep100_cifar100_s42",
+        PALETTE["static"],
+        "baseline",
+    ),
+    (
+        "RandAugment (N=2, M=9)",
+        "wideresnet_randaugment_sgd_cosine_ep100_cifar100_s42",
+        PALETTE["cosine"],
+        "baseline",
+    ),
+    (
+        "ETS + mix (ours)",
+        "wideresnet_tiered_ets_mix_both_sgd_cosine_ep100_cifar100_s42",
         PALETTE["cl"],
+        "cl",
+    ),
+    (
+        "ETS no-mix (ablation)",
+        "wideresnet_tiered_ets_nomix_sgd_cosine_ep100_cifar100_s42",
+        PALETTE["cl"],
+        "cl",
+    ),
+    (
+        "LPS + mix (ours)",
+        "wideresnet_tiered_lps_mix_both_sgd_cosine_ep100_cifar100_s42",
+        PALETTE["adam"],
+        "cl",
+    ),
+    (
+        "EGS + mix (ours)",
+        "wideresnet_tiered_egs_freq10_mix_both_sgd_cosine_ep100_cifar100_s42",
+        PALETTE["adam"],
         "cl",
     ),
 ]
@@ -185,15 +215,17 @@ def fig_comparison(rows, fname="fig_compare_methods.png"):
     tests = [r["test_acc"] if r["test_acc"] else r["val_b"] for r in valid]
     gaps = [r["gap"] for r in valid]
 
-    # Short x-tick labels
-    short = ["No Aug", "Static Aug", "Tiered CL"][: len(valid)]
+    # Short x-tick labels derived from full labels
+    short = [
+        r["label"].replace(" (ours)", "").replace(" (ablation)", "") for r in valid
+    ]
 
     x = np.arange(len(valid))
     width = 0.55
 
-    fig, axes = plt.subplots(1, 2, figsize=(7, 3.2))
+    fig, axes = plt.subplots(1, 2, figsize=(max(7, len(valid) * 1.4), 3.8))
     fig.suptitle(
-        "CIFAR-100  ·  ResNet-50  ·  100 epochs  ·  SGD",
+        "CIFAR-100  ·  WideResNet-28-10  ·  100 epochs  ·  SGD  ·  CosineAnnealingLR",
         fontsize=9,
         fontweight="bold",
     )
@@ -231,7 +263,7 @@ def fig_comparison(rows, fname="fig_compare_methods.png"):
     ax.set_xticklabels(short)
     ax.set_ylabel("Train − Val Gap (pp)  ↓ lower is better")
     ax.set_title("(b)  Generalization Gap")
-    ax.set_ylim(0, max(gaps) + 8)
+    ax.set_ylim(min(0, min(gaps)) - 4, max(gaps) + 8)
     ax.yaxis.set_major_locator(MultipleLocator(10))
     for bar, val in zip(bars2, gaps):
         ax.text(
@@ -256,7 +288,9 @@ def print_final_table(rows):
     W = 88
     print(f"\n{'═' * W}")
     print("  FINAL RESULTS TABLE — All Experiments")
-    print("  CIFAR-100  ·  ResNet-50  ·  SGD  ·  seed=42  ·  100 epochs")
+    print(
+        "  CIFAR-100  ·  WideResNet-28-10  ·  SGD  ·  CosineAnnealingLR  ·  seed=42  ·  100 epochs"
+    )
     print(f"{'═' * W}\n")
 
     groups = {

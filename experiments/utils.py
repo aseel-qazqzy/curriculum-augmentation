@@ -32,6 +32,12 @@ class _Tee:
         self._console.flush()
         self._log_file.flush()
 
+    def isatty(self) -> bool:
+        return False
+
+    def fileno(self):
+        return self._console.fileno()
+
     def close(self):
         sys.stdout = self._console
         self._log_file.close()
@@ -62,6 +68,8 @@ def set_seed(seed: int = 42):
     torch.cuda.manual_seed_all(seed)
     torch.backends.cudnn.deterministic = True
     torch.backends.cudnn.benchmark = False
+    # warn_only=True avoids crashes on ops without deterministic kernels (e.g. scatter_add on CUDA)
+    torch.use_deterministic_algorithms(True, warn_only=True)
 
 
 def _mps_is_stable() -> bool:
@@ -137,9 +145,32 @@ def build_scheduler(optimizer, cfg: dict):
         )
         print(f"  Scheduler   : MultiStepLR | milestones={milestones} | gamma=0.1")
     elif name == "cosine":
-        scheduler = optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=epochs)
+        warmup_epochs = cfg.get("warmup_epochs", 5)
+        eta_min = cfg.get("eta_min", 1e-6)
         milestones = []
-        print(f"  Scheduler   : CosineAnnealingLR | T_max={epochs}")
+        if warmup_epochs > 0:
+            warmup_sched = optim.lr_scheduler.LinearLR(
+                optimizer, start_factor=0.1, end_factor=1.0, total_iters=warmup_epochs
+            )
+            cosine_sched = optim.lr_scheduler.CosineAnnealingLR(
+                optimizer, T_max=max(1, epochs - warmup_epochs), eta_min=eta_min
+            )
+            scheduler = optim.lr_scheduler.SequentialLR(
+                optimizer,
+                schedulers=[warmup_sched, cosine_sched],
+                milestones=[warmup_epochs],
+            )
+            print(
+                f"  Scheduler   : CosineAnnealingLR + LinearWarmup "
+                f"| warmup={warmup_epochs} ep | T_max={epochs - warmup_epochs} | eta_min={eta_min}"
+            )
+        else:
+            scheduler = optim.lr_scheduler.CosineAnnealingLR(
+                optimizer, T_max=epochs, eta_min=eta_min
+            )
+            print(
+                f"  Scheduler   : CosineAnnealingLR | T_max={epochs} | eta_min={eta_min}"
+            )
     elif name == "none":
         scheduler = None
         milestones = []

@@ -353,19 +353,26 @@ def run_training(
             )
             print(f"  Best saved (epoch={epoch}, val_acc={val_acc * 100:.2f}%)")
 
+    # Restore best-epoch weights before final test evaluation so reported test
+    # accuracy corresponds to the best checkpoint, not the last-epoch model.
+    saved_ckpt = torch.load(ckpt_path, map_location="cpu", weights_only=False)
+    model.load_state_dict(saved_ckpt["model_state_dict"])
+    model.to(device)
+
     test_loss, test_top1, test_top5 = evaluate(model, test_loader, criterion, device)
     total_time = time.time() - start_time
 
-    ckpt = torch.load(ckpt_path, map_location="cpu")
-    ckpt["test_top1"] = test_top1
-    ckpt["test_top5"] = test_top5
-    ckpt["total_minutes"] = total_time / 60
-    torch.save(ckpt, ckpt_path)
+    saved_ckpt["test_top1"] = test_top1
+    saved_ckpt["test_top5"] = test_top5
+    saved_ckpt["total_minutes"] = total_time / 60
+    torch.save(saved_ckpt, ckpt_path)
 
     print(f"\n── FINAL RESULTS: {exp_name} ──────────────────────")
     print(f"  Best Val Top-1  : {best_val_acc * 100:.2f}%  (epoch {best_epoch})")
     print(f"  Test Top-1      : {test_top1 * 100:.2f}%")
     print(f"  Test Top-5      : {test_top5 * 100:.2f}%")
+    print(f"  Test Error Top-1: {(1 - test_top1) * 100:.2f}%")
+    print(f"  Test Error Top-5: {(1 - test_top5) * 100:.2f}%")
     print(f"  Val-Test Gap    : {abs(best_val_acc - test_top1) * 100:.2f}%")
     print(f"  Total Time      : {total_time / 60:.1f} minutes")
     print(f"  History saved   : {history_path}")

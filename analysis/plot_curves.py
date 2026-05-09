@@ -77,8 +77,8 @@ matplotlib.rcParams.update(
     }
 )
 
-# Tier transition epochs (for 100-epoch runs aligned with MultiStepLR)
-TIER_EPOCHS = [33, 66]  # end of Tier 1, end of Tier 2
+# Tier transition epochs: ETS t1=0.20, t2=0.45 over 100 epochs
+TIER_EPOCHS = [20, 45]  # end of Tier 1, end of Tier 2
 
 
 # DATA LOADING
@@ -175,6 +175,7 @@ def best(h):
 
 
 def milestones(n=100):
+    # kept for legacy callers; new runs use CosineAnnealingLR (no milestones)
     return [int(n * f) for f in (0.33, 0.66, 0.83)]
 
 
@@ -210,19 +211,9 @@ def save(fig, fname):
 
 
 def lr_vlines(ax, n, color="#888888", alpha=0.35):
-    """Draw vertical dotted lines at MultiStepLR milestones."""
-    ms = milestones(n)
-    xlo, xhi = (0, n + 2)
-    for i, m in enumerate(ms):
-        if m < xhi:
-            ax.axvline(
-                m,
-                color=color,
-                lw=0.9,
-                ls=":",
-                alpha=alpha,
-                label="LR decay" if i == 0 else "_",
-            )
+    """No-op for CosineAnnealingLR runs (no discrete milestones).
+    Kept so old call sites don't break."""
+    pass
 
 
 def tier_vlines(ax, color="#009E73", alpha=0.60):
@@ -453,29 +444,34 @@ def fig3_generalization(runs, fname="fig3_generalization.png"):
     plt.show()
 
 
-# FIGURE 4  —  LR Schedule  (MultiStepLR with tier transition markers)
-def fig4_lr_schedule(n_epochs=100, fname="fig4_lr_schedule.png"):
-    """MultiStepLR for 100 epochs, annotated with tier transition points."""
-    ms = milestones(n_epochs)
+# FIGURE 4  —  LR Schedule  (CosineAnnealingLR with warmup + tier markers)
+def fig4_lr_schedule(
+    n_epochs=100, warmup=5, lr_init=0.1, eta_min=1e-6, fname="fig4_lr_schedule.png"
+):
+    """CosineAnnealingLR + linear warmup for 100 epochs, with tier transition markers."""
     ep_x = np.arange(1, n_epochs + 1)
 
-    lr_ms = np.full(n_epochs, 0.1)
-    for m in ms:
-        lr_ms[m:] *= 0.1
+    lr = np.zeros(n_epochs)
+    for i, e in enumerate(ep_x):
+        if e <= warmup:
+            lr[i] = lr_init * (0.1 + 0.9 * e / warmup)
+        else:
+            t = (e - warmup) / max(1, n_epochs - warmup)
+            lr[i] = eta_min + 0.5 * (lr_init - eta_min) * (1 + np.cos(np.pi * t))
 
     fig, ax = plt.subplots(figsize=(8, 3.5))
     fig.suptitle(
-        "Learning Rate Schedule — MultiStepLR  ·  CIFAR-100  ·  100 epochs",
+        "Learning Rate Schedule — CosineAnnealingLR + 5-ep Warmup  ·  CIFAR-100  ·  100 epochs",
         fontsize=9,
         fontweight="bold",
     )
 
     ax.plot(
         ep_x,
-        lr_ms,
+        lr,
         color=PALETTE["static"],
         lw=2.2,
-        label=f"MultiStepLR  (milestones={ms},  γ=0.1)",
+        label=f"CosineAnnealingLR  (warmup={warmup}, η_min={eta_min})",
     )
 
     tier_labels = ["Tier 2 unlocked", "Tier 3 unlocked"]
@@ -491,7 +487,7 @@ def fig4_lr_schedule(n_epochs=100, fname="fig4_lr_schedule.png"):
         )
         ax.text(
             ep_t + 0.5,
-            lr_ms[0] * 1.12,
+            lr_init * 0.6,
             f"ep {ep_t}\n{tier_labels[j]}",
             fontsize=7,
             color=tier_colors[j],
@@ -501,7 +497,7 @@ def fig4_lr_schedule(n_epochs=100, fname="fig4_lr_schedule.png"):
     ax.set_xlabel("Epoch")
     ax.set_ylabel("Learning Rate")
     ax.set_yscale("log")
-    ax.set_ylim(5e-5, 0.5)
+    ax.set_ylim(5e-7, 0.5)
     ax.set_xlim(0, n_epochs + 2)
     ax.xaxis.set_major_locator(MaxNLocator(integer=True, nbins=10))
     ax.legend(loc="upper right", fontsize=8)
@@ -527,7 +523,7 @@ def fig5_summary(runs, fname="fig5_summary.png"):
 
     fig = plt.figure(figsize=(12, 8))
     fig.suptitle(
-        "Experiment Summary Dashboard — CIFAR-100  ·  ResNet-50  ·  SGD",
+        "Experiment Summary Dashboard — CIFAR-100  ·  WideResNet-28-10  ·  SGD  ·  Cosine",
         fontsize=10,
         fontweight="bold",
     )
@@ -627,7 +623,8 @@ def fig5_summary(runs, fname="fig5_summary.png"):
     ax3.set_title("(d)  Overfitting Gap Over Epochs  (↓ lower is better)")
     ax3.legend(fontsize=7, loc="upper left")
     if all_gaps_data:
-        lo, hi = _ylim_padded([all_gaps_data], pad_frac=0.10, lo_floor=0.0)
+        # lo_floor=None allows negative values (train < val with heavy augmentation)
+        lo, hi = _ylim_padded([all_gaps_data], pad_frac=0.10, lo_floor=None)
         ax3.set_ylim(lo, hi)
 
     save(fig, fname)
@@ -638,7 +635,7 @@ def fig5_summary(runs, fname="fig5_summary.png"):
 def fig6_cl_with_tiers(runs, fname="fig6_cl_tier_transitions.png"):
     """
     Tiered CL vs Static Aug: val accuracy curves with vertical tier-transition
-    markers at epoch 33 (Tier 2) and epoch 66 (Tier 3).
+    markers at epoch 20 (Tier 2) and epoch 45 (Tier 3) — ETS t1=0.20, t2=0.45.
     """
     cl_key = next((k for k in runs if "CL" in k or "Tier" in k), None)
     static_key = next((k for k in runs if "Static" in k), None)
@@ -874,8 +871,8 @@ def print_analysis(runs):
         ft = h["train_acc"][-1] * 100
         gap = ft - val_b
         n = len(h["val_acc"])
-        ep90 = next((i + 1 for i, v in enumerate(h["val_acc"]) if v * 100 >= 90), None)
-        ep95 = next((i + 1 for i, v in enumerate(h["val_acc"]) if v * 100 >= 95), None)
+        ep90 = next((i + 1 for i, v in enumerate(h["val_acc"]) if v * 100 >= 70), None)
+        ep95 = next((i + 1 for i, v in enumerate(h["val_acc"]) if v * 100 >= 80), None)
         rows.append(
             dict(
                 label=label,
@@ -894,7 +891,7 @@ def print_analysis(runs):
 
     print(f"\n{bar}")
     print(
-        "THOROUGH ANALYSIS — CIFAR-100  ·  ResNet-50  ·  SGD  ·  MultiStepLR [33,66,83]"
+        "THOROUGH ANALYSIS — CIFAR-100  ·  WideResNet-28-10  ·  SGD  ·  CosineAnnealingLR"
     )
     print(bar)
 
@@ -950,7 +947,7 @@ def print_analysis(runs):
 
     # TABLE 3: Convergence
     print("\n  TABLE 3 — Convergence Speed\n")
-    print(f"  {'Method':<42} {'->90% @':>8} {'->95% @':>8} {'Stable @':>10}")
+    print(f"  {'Method':<42} {'->70% @':>8} {'->80% @':>8} {'Stable @':>10}")
     print("  " + "-" * (W - 2))
     for r in rows:
         s90 = f"ep {r['ep90']}" if r["ep90"] else "N/A"
@@ -1035,14 +1032,19 @@ def mode_baselines(ckpt):
     runs = build_runs(
         [
             (
-                "No Augmentation (floor)",
-                "resnet50_no_aug_cifar100_v2_cifar100",
+                "No Augmentation",
+                "wideresnet_none_sgd_cosine_ep100_cifar100_s42",
                 PALETTE["no_aug"],
             ),
             (
-                "Static Aug (all ops, epoch 1)",
-                "resnet50_static_aug_cifar100_v2_cifar100",
+                "Static Aug",
+                "wideresnet_static_sgd_cosine_ep100_cifar100_s42",
                 PALETTE["static"],
+            ),
+            (
+                "RandAugment (N=2, M=9)",
+                "wideresnet_randaugment_sgd_cosine_ep100_cifar100_s42",
+                PALETTE["cosine"],
             ),
         ],
         ckpt,
@@ -1050,7 +1052,7 @@ def mode_baselines(ckpt):
     print("\n  Generating figures + analysis...")
     fig1_val_comparison(
         runs,
-        title="Baseline Comparison — CIFAR-100 · ResNet-50",
+        title="Baseline Comparison — CIFAR-100 · WideResNet-28-10",
         fname="fig1_val_comparison_baselines.png",
     )
     fig2_overfitting(runs, fname="fig2_overfitting_baselines.png")
@@ -1063,25 +1065,33 @@ def mode_baselines(ckpt):
 
 
 def mode_all(ckpt):
-    print("\n  Loading all histories (no-aug + static + tiered CL)...")
-    # load_history() auto-detects all files starting with the base name and merges
-    # them by modification time — no manual changes needed for resumed runs.
+    print("\n  Loading all WideResNet-28-10 histories (seed=42)...")
     runs = build_runs(
         [
             (
-                "No Augmentation (floor)",
-                "resnet50_no_aug_cifar100_v2_cifar100",
+                "No Augmentation",
+                "wideresnet_none_sgd_cosine_ep100_cifar100_s42",
                 PALETTE["no_aug"],
             ),
             (
-                "Static Aug (all ops, epoch 1)",
-                "resnet50_static_aug_cifar100_v2_cifar100",
+                "Static Aug",
+                "wideresnet_static_sgd_cosine_ep100_cifar100_s42",
                 PALETTE["static"],
             ),
             (
-                "Tiered CL (3-tier progressive) *",
-                "resnet50_tiered_curriculum_cifar100",
+                "RandAugment (N=2, M=9)",
+                "wideresnet_randaugment_sgd_cosine_ep100_cifar100_s42",
+                PALETTE["cosine"],
+            ),
+            (
+                "ETS + mix (ours)",
+                "wideresnet_tiered_ets_mix_both_sgd_cosine_ep100_cifar100_s42",
                 PALETTE["cl"],
+            ),
+            (
+                "LPS + mix (ours)",
+                "wideresnet_tiered_lps_mix_both_sgd_cosine_ep100_cifar100_s42",
+                PALETTE["adam"],
             ),
         ],
         ckpt,
@@ -1089,7 +1099,7 @@ def mode_all(ckpt):
     print("\n  Generating figures + analysis...")
     fig1_val_comparison(
         runs,
-        title="All Methods — CIFAR-100 · ResNet-50",
+        title="All Methods — CIFAR-100 · WideResNet-28-10",
         fname="fig1_val_comparison_all.png",
     )
     fig2_overfitting(runs, fname="fig2_overfitting_all.png")
@@ -1103,8 +1113,43 @@ def mode_all(ckpt):
 
 
 def mode_ablation(ckpt):
-    # Reuse mode_all for now — extend when more schedulers are available
-    mode_all(ckpt)
+    print("\n  Loading ablation histories (seed=42)...")
+    runs = build_runs(
+        [
+            (
+                "Static Aug",
+                "wideresnet_static_sgd_cosine_ep100_cifar100_s42",
+                PALETTE["static"],
+            ),
+            (
+                "Static + Mixing",
+                "wideresnet_static_mixing_sgd_cosine_ep100_cifar100_s42",
+                PALETTE["cosine"],
+            ),
+            (
+                "ETS + mix (ours)",
+                "wideresnet_tiered_ets_mix_both_sgd_cosine_ep100_cifar100_s42",
+                PALETTE["cl"],
+            ),
+            (
+                "ETS no-mix (ablation)",
+                "wideresnet_tiered_ets_nomix_sgd_cosine_ep100_cifar100_s42",
+                PALETTE["adam"],
+            ),
+        ],
+        ckpt,
+    )
+    print("\n  Generating ablation figures + analysis...")
+    fig1_val_comparison(
+        runs,
+        title="Ablation Study — CIFAR-100 · WideResNet-28-10",
+        fname="fig1_val_comparison_ablation.png",
+    )
+    fig3_generalization(runs, fname="fig3_generalization_ablation.png")
+    fig5_summary(runs, fname="fig5_summary_ablation.png")
+    fig6_cl_with_tiers(runs, fname="fig6_cl_tier_transitions_ablation.png")
+    fig7_gap_over_epochs(runs, fname="fig7_gap_ablation.png")
+    print_analysis(runs)
 
 
 # CLI

@@ -55,12 +55,12 @@ PALETTE = {
     "lr": "#D62728",
 }
 
-N_EPOCHS = 150
+N_EPOCHS = 100
 MILESTONES = [
     int(N_EPOCHS * 0.33),
     int(N_EPOCHS * 0.66),
     int(N_EPOCHS * 0.83),
-]  # [49, 99, 124]
+]  # [33, 66, 83]
 
 
 # CURRICULUM SCHEDULES

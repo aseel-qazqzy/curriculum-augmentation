@@ -148,15 +148,25 @@ class ThreeTierCurriculumTransform:
         self.epoch = 1
         self.strength = strength  # ceiling — reached at Tier 3
         self._forced_tier = None  # set by loss/entropy schedulers; None = time-based
+        # Records the epoch at which each tier was activated via set_tier().
+        # Used by _current_strength() and mix_scale() so ramp boundaries are
+        # correct under LPS/EGS (which advance tiers at different epochs than t1/t2).
+        self._tier_start_epoch: dict[int, int] = {}
 
     def set_epoch(self, epoch: int) -> None:
         self.epoch = epoch
 
-    def set_tier(self, tier: int) -> None:
+    def set_tier(self, tier: int, epoch: int = None) -> None:
         """Override tier directly — used by loss-guided and entropy-guided schedulers.
-        Pass None to revert to time-based epoch logic."""
+
+        Pass epoch (the detection epoch) so _current_strength() and mix_scale()
+        use the actual transition point rather than the ETS t1/t2 boundaries.
+        The new tier becomes active on epoch+1 (set_epoch is called first each epoch).
+        """
         if tier is not None and tier not in (1, 2, 3):
             raise ValueError(f"tier must be 1, 2, or 3, got {tier}")
+        if tier != self._forced_tier and epoch is not None:
+            self._tier_start_epoch[tier] = epoch
         self._forced_tier = tier
 
     def tier(self) -> int:
@@ -175,13 +185,21 @@ class ThreeTierCurriculumTransform:
         return self.strength * _TIER_STRENGTH_FRACS[tier]
 
     def _current_strength(self) -> float:
-        """Linearly ramp strength over _STRENGTH_RAMP_EPOCHS after a tier boundary."""
+        """Linearly ramp strength over _STRENGTH_RAMP_EPOCHS after a tier boundary.
+
+        Under ETS the boundary is the configured t1/t2 epoch. Under LPS/EGS the
+        boundary is the actual detection epoch stored by set_tier(), so the ramp
+        always starts from the real transition point regardless of scheduler.
+        """
         tier = self.tier()
         s_curr = self._tier_strength(tier)
         if tier == 1:
             return s_curr
-        boundary = self.t1 if tier == 2 else self.t2
-        epochs_in = self.epoch - boundary  # 1 on first epoch of new tier
+        if self._forced_tier is not None and tier in self._tier_start_epoch:
+            boundary = self._tier_start_epoch[tier]
+        else:
+            boundary = self.t1 if tier == 2 else self.t2
+        epochs_in = self.epoch - boundary
         if 0 < epochs_in <= _STRENGTH_RAMP_EPOCHS:
             s_prev = self._tier_strength(tier - 1)
             return s_prev + (s_curr - s_prev) * (epochs_in / _STRENGTH_RAMP_EPOCHS)
@@ -189,10 +207,19 @@ class ThreeTierCurriculumTransform:
 
     def mix_scale(self) -> float:
         """Returns 0.0 before Tier 3, then ramps linearly 0→1 over _STRENGTH_RAMP_EPOCHS.
-        Used by the training loop to ramp mixing probability and alpha gradually."""
+
+        Uses the actual Tier 3 start epoch (LPS/EGS) or the configured t2 (ETS)
+        as the ramp origin, so mixing always activates on the first Tier 3 epoch.
+        """
         if self.tier() < 3:
             return 0.0
-        epochs_in = self.epoch - self.t2
+        if self._forced_tier is not None and 3 in self._tier_start_epoch:
+            boundary = self._tier_start_epoch[3]
+        else:
+            boundary = self.t2
+        epochs_in = self.epoch - boundary
+        if epochs_in <= 0:
+            return 0.0
         if epochs_in <= _STRENGTH_RAMP_EPOCHS:
             return epochs_in / _STRENGTH_RAMP_EPOCHS
         return 1.0

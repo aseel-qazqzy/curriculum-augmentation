@@ -39,6 +39,8 @@ BASE_CONFIG = {
     "mix_mode": "both",  # cutmix | mixup | both | none
     "mix_alpha": 1.0,  # Beta(alpha, alpha) — 1.0 = uniform mix ratio
     "mix_prob": 0.5,  # probability of mixing any given batch
+    # DataLoader
+    "num_workers": 4,       # parallel workers for data loading; 0 = single-process (debug)
     # Logging
     "checkpoint_dir": CHECKPOINT_DIR,
     "log_every": 10,
@@ -50,6 +52,9 @@ BASE_CONFIG = {
     "lps_min_epochs": 10,
     # Label smoothing (0.0 = disabled — plain CrossEntropy; existing ETS/LPS runs unchanged)
     "label_smoothing": 0.0,
+    # Cosine scheduler warmup (ignored for multistep)
+    "warmup_epochs": 5,     # linear warmup before cosine decay; 0 = no warmup
+    "eta_min": 1e-6,        # cosine floor LR — prevents complete LR decay to zero
     # Entropy-Guided Scheduling (EGS)
     "egs_update_freq": 10,  # recompute per-sample entropy every N epochs
     "egs_min_epochs_per_tier": 20,  # min epochs in a tier before a sample can advance

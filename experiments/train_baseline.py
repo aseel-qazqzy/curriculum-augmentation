@@ -43,6 +43,16 @@ DEFAULT_CONFIG = {
 }
 
 
+def _resolve_tier(val, frac, epochs):
+    """Convert tier boundary to absolute epoch count.
+
+    val=None → use frac * epochs.  val in (0,1) → fraction.  val >= 1 → absolute.
+    """
+    if val is None:
+        return int(epochs * frac)
+    return int(val * epochs) if 0.0 < val < 1.0 else int(val)
+
+
 def build_transforms(cfg: dict):
     aug = cfg["augmentation"]
     dataset = cfg["dataset"]
@@ -82,11 +92,6 @@ def build_transforms(cfg: dict):
             return curriculum_transform, curriculum_transform.get_val_transform()
 
         from augmentations.policies import ThreeTierCurriculumAugmentation
-
-        def _resolve_tier(val, frac, epochs):
-            if val is None:
-                return int(epochs * frac)
-            return int(val * epochs) if 0.0 < val < 1.0 else int(val)
 
         epochs = cfg["epochs"]
         policy = ThreeTierCurriculumAugmentation(
@@ -135,6 +140,10 @@ def main(cfg: dict):
     if not cfg["experiment_name"].endswith(f"_{dataset}"):
         cfg["experiment_name"] = f"{cfg['experiment_name']}_{dataset}"
 
+    # Always append seed so multi-seed runs never overwrite each other's checkpoints.
+    seed = cfg.get("seed", 42)
+    cfg["experiment_name"] = f"{cfg['experiment_name']}_s{seed}"
+
     cfg["run_ts"] = datetime.now().strftime("%Y-%m-%d %H:%M")
     tee = setup_logging(cfg)
     set_seed(cfg["seed"])
@@ -158,11 +167,6 @@ def main(cfg: dict):
             _TIER_N_OPS,
             _STRENGTH_RAMP_EPOCHS,
         )
-
-        def _resolve_tier(val, frac, epochs):
-            if val is None:
-                return int(epochs * frac)
-            return int(val * epochs) if 0.0 < val < 1.0 else int(val)
 
         t1 = _resolve_tier(cfg.get("tier_t1"), 0.33, cfg["epochs"])
         t2 = _resolve_tier(cfg.get("tier_t2"), 0.66, cfg["epochs"])
@@ -267,7 +271,7 @@ def main(cfg: dict):
     # LPS manages tier transitions via set_tier(); prevent the transform from
     # falling back to ETS epoch-boundaries before the first set_tier() call.
     if cfg.get("tier_schedule") == "lps" and hasattr(train_transform, "set_tier"):
-        train_transform.set_tier(1)
+        train_transform.set_tier(1, epoch=1)
 
     if cfg["dataset"] == "cifar100":
         loader_fn = get_cifar100_loaders
@@ -290,6 +294,7 @@ def main(cfg: dict):
         val_split=cfg["val_split"],
         train_transform=_loader_train_tf,
         test_transform=val_transform,
+        num_workers=cfg.get("num_workers", 4),
         debug=cfg.get("debug", False),
     )
 
@@ -534,7 +539,7 @@ def main(cfg: dict):
             lps_scheduler.update(val_loss)
             if lps_scheduler.should_advance():
                 new_tier = lps_scheduler.advance(epoch)
-                train_transform.set_tier(new_tier)
+                train_transform.set_tier(new_tier, epoch=epoch)
                 print(f"  LPS: advancing to Tier {new_tier} at epoch {epoch}")
 
         if scheduler:
@@ -699,6 +704,8 @@ def main(cfg: dict):
         )
     print(f"  {'Test Top-1':<22}  {test_top1 * 100:>9.2f}%")
     print(f"  {'Test Top-5':<22}  {test_top5 * 100:>9.2f}%")
+    print(f"  {'Test Error (Top-1)':<22}  {(1 - test_top1) * 100:>9.2f}%")
+    print(f"  {'Test Error (Top-5)':<22}  {(1 - test_top5) * 100:>9.2f}%")
     if not full_train_mode:
         print(f"  {'Val–Test Gap':<22}  {abs(best_val_acc - test_top1) * 100:>9.2f}%")
     print(f"  {'─' * 22}  {'─' * 10}")
@@ -716,6 +723,8 @@ def main(cfg: dict):
         )
         wandb.run.summary["test_top1"] = test_top1 * 100
         wandb.run.summary["test_top5"] = test_top5 * 100
+        wandb.run.summary["test_error_top1"] = (1 - test_top1) * 100
+        wandb.run.summary["test_error_top5"] = (1 - test_top5) * 100
         wandb.run.summary["best_val_acc"] = best_val_acc * 100
         wandb.run.summary["total_minutes"] = total_time / 60
         wandb.finish()
@@ -901,6 +910,12 @@ def parse_args():
         default=None,
         help="Label smoothing epsilon (default: 0.0 = disabled). Does not affect ETS/LPS runs unless explicitly set.",
     )
+    parser.add_argument(
+        "--num_workers",
+        type=int,
+        default=None,
+        help="DataLoader worker processes (default: 4; set 0 for single-process debugging)",
+    )
 
     return parser.parse_args()
 
@@ -943,6 +958,7 @@ if __name__ == "__main__":
         "egs_mix_min_epoch",
         "seed",
         "label_smoothing",
+        "num_workers",
     ]:
         val = getattr(args, key, None)
         if val is not None:
