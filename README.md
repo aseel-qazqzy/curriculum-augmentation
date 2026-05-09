@@ -215,9 +215,9 @@ Results below are indicative targets for CIFAR-100 with ResNet-50 at augmentatio
 
 | Method                        | Best Val Acc. | Test Top-1   | Val–Test Gap |
 |-------------------------------|---------------|--------------|--------------|
-| No Augmentation               | ~55–60%       | ~54–58%      | ~1–2%        |
-| Static Augmentation           | ~68–72%       | ~66–70%      | ~2–3%        |
-| **Tiered Curriculum (proposed)** | **~75–79%** | **~73–77%** | **~1–2%**   |
+| No Augmentation               | %       | %      | %        |
+| Static Augmentation           | %       | %      | %        |
+| **Tiered Curriculum (proposed)** | **~%** | **~%** | **~%**   |
 
 ---
 
