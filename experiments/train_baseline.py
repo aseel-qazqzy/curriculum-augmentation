@@ -153,6 +153,7 @@ def main(cfg: dict):
     print(f"  Experiment  : {cfg['experiment_name']}")
     print(f"  Dataset     : {cfg['dataset']}")
     print(f"  Model       : {cfg['model']}")
+    print(f"  Seed        : {cfg.get('seed', 42)}")
     print(
         f"  Augmentation: {cfg['augmentation']}"
         + (
