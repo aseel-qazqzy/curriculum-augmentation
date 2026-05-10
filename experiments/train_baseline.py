@@ -356,13 +356,15 @@ def main(cfg: dict):
             ),
             "min_epochs_per_tier": cfg.get("egs_min_epochs_per_tier", 20),
             "max_epochs_per_tier": cfg.get("egs_max_epochs_per_tier", 40),
+            "max_promote_frac": cfg.get("egs_max_promote_frac", 0.15),
         }
 
         print(
             f"  EGS: CurriculumDataset ready | {n_train:,} samples | "
             f"entropy update every {egs_state['update_freq']} epochs | "
             f"min_epochs_per_tier={egs_state['min_epochs_per_tier']} | "
-            f"max_epochs_per_tier={egs_state['max_epochs_per_tier']}"
+            f"max_epochs_per_tier={egs_state['max_epochs_per_tier']} | "
+            f"max_promote_frac={egs_state['max_promote_frac']}"
         )
 
     num_classes = {"cifar100": 100, "tiny_imagenet": 200}.get(cfg["dataset"], 10)
@@ -481,6 +483,7 @@ def main(cfg: dict):
                 epoch=epoch,
                 egs_min_epochs_per_tier=egs_state["min_epochs_per_tier"],
                 egs_max_epochs_per_tier=egs_state["max_epochs_per_tier"],
+                egs_max_promote_frac=egs_state["max_promote_frac"],
             )
             egs_state["curriculum_dataset"].set_difficulties(difficulties)
 
@@ -900,6 +903,12 @@ def parse_args():
         help="EGS: earliest epoch at which mixing can activate regardless of tier counts (default: 30)",
     )
     parser.add_argument(
+        "--egs_max_promote_frac",
+        type=float,
+        default=None,
+        help="EGS: max fraction of samples promoted per entropy update (default: 0.15, 0=unlimited)",
+    )
+    parser.add_argument(
         "--seed",
         type=int,
         default=None,
@@ -957,6 +966,7 @@ if __name__ == "__main__":
         "egs_max_epochs_per_tier",
         "egs_mix_threshold",
         "egs_mix_min_epoch",
+        "egs_max_promote_frac",
         "seed",
         "label_smoothing",
         "num_workers",
