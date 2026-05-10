@@ -108,6 +108,7 @@ def assign_egs_difficulties(
     epoch: int = 0,
     egs_min_epochs_per_tier: int = 20,
     egs_max_epochs_per_tier: int = 40,
+    egs_max_promote_frac: float = 0.0,
 ) -> tuple[np.ndarray, np.ndarray, torch.Tensor]:
     """
     Convert entropy scores to per-sample difficulty values for CurriculumDataset.
@@ -170,6 +171,17 @@ def assign_egs_difficulties(
 
     # A sample advances if: entropy warrants it AND min time has elapsed (or max-time bump)
     will_advance = can_advance & (candidate_tiers > max_tier_reached)
+
+    # Promotion rate cap: if too many samples qualify at once, promote only the most
+    # confident ones (lowest entropy) up to max_promote_frac * N per update.
+    if egs_max_promote_frac > 0.0:
+        max_promote = max(1, int(egs_max_promote_frac * len(entropy_scores)))
+        if will_advance.sum() > max_promote:
+            eligible_idx = np.where(will_advance)[0]
+            # rank by entropy ascending (most confident = lowest entropy first)
+            ranked = eligible_idx[np.argsort(entropy_scores[eligible_idx])]
+            will_advance = np.zeros_like(will_advance)
+            will_advance[ranked[:max_promote]] = True
 
     # Monotonic update
     new_max_tier = max_tier_reached.copy()
