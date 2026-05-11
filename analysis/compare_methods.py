@@ -32,9 +32,12 @@ os.makedirs(FIGURES_DIR, exist_ok=True)
 PALETTE = {
     "no_aug": "#999999",  # neutral gray
     "static": "#0072B2",  # blue
-    "cl": "#009E73",  # green
-    "cosine": "#E69F00",  # orange
-    "adam": "#CC79A7",  # pink
+    "static_mixing": "#56B4E9",  # sky blue
+    "randaugment": "#E69F00",  # orange
+    "ets": "#009E73",  # green
+    "ets_nomix": "#66C2A5",  # light green
+    "lps": "#CC79A7",  # pink
+    "egs": "#D55E00",  # vermillion
 }
 
 # Research paper style — clean, minimal, publication-ready
@@ -170,37 +173,37 @@ EXPERIMENTS = [
     (
         "Static + Mixing",
         "wideresnet_static_mixing_sgd_cosine_ep100_cifar100_s42",
-        PALETTE["static"],
+        PALETTE["static_mixing"],
         "baseline",
     ),
     (
-        "RandAugment (N=2, M=9)",
+        "RandAugment",
         "wideresnet_randaugment_sgd_cosine_ep100_cifar100_s42",
-        PALETTE["cosine"],
+        PALETTE["randaugment"],
         "baseline",
     ),
     (
         "ETS + mix (ours)",
         "wideresnet_tiered_ets_mix_both_sgd_cosine_ep100_cifar100_s42",
-        PALETTE["cl"],
+        PALETTE["ets"],
         "cl",
     ),
     (
         "ETS no-mix (ablation)",
         "wideresnet_tiered_ets_nomix_sgd_cosine_ep100_cifar100_s42",
-        PALETTE["cl"],
+        PALETTE["ets_nomix"],
         "cl",
     ),
     (
         "LPS + mix (ours)",
         "wideresnet_tiered_lps_mix_both_sgd_cosine_ep100_cifar100_s42",
-        PALETTE["adam"],
+        PALETTE["lps"],
         "cl",
     ),
     (
         "EGS + mix (ours)",
         "wideresnet_tiered_egs_freq10_mix_both_sgd_cosine_ep100_cifar100_s42",
-        PALETTE["adam"],
+        PALETTE["egs"],
         "cl",
     ),
 ]
@@ -223,7 +226,7 @@ def fig_comparison(rows, fname="fig_compare_methods.png"):
     x = np.arange(len(valid))
     width = 0.55
 
-    fig, axes = plt.subplots(1, 2, figsize=(max(7, len(valid) * 1.4), 3.8))
+    fig, axes = plt.subplots(1, 2, figsize=(max(10, len(valid) * 1.8), 4.5))
     fig.suptitle(
         "CIFAR-100  ·  WideResNet-28-10  ·  100 epochs  ·  SGD  ·  CosineAnnealingLR",
         fontsize=9,
@@ -236,7 +239,7 @@ def fig_comparison(rows, fname="fig_compare_methods.png"):
         x, tests, width=width, color=colors, edgecolor="black", linewidth=0.6, zorder=3
     )
     ax.set_xticks(x)
-    ax.set_xticklabels(short)
+    ax.set_xticklabels(short, rotation=30, ha="right")
     ax.set_ylabel("Test Top-1 Accuracy (%)")
     ax.set_title("(a)  Test Top-1 Accuracy")
     ymin = max(0, min(tests) - 8)

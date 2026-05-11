@@ -212,6 +212,29 @@ class WandbTools:
                 print(f"  {run.name[:50]:<50} → {name}")
         print("Done.")
 
+    # ── 2b. Regroup runs into {model} | {dataset} | ep{epochs} folders ─────────
+    def regroup(self):
+        """Update group of all runs to '{model} | {dataset} | ep{epochs}'."""
+        from models.registry import MODEL_DISPLAY_NAMES
+
+        runs = self._get_finished_runs()
+        print(f"Regrouping {len(runs)} runs...")
+        updated = 0
+        for run in runs:
+            cfg = run.config
+            model = MODEL_DISPLAY_NAMES.get(
+                cfg.get("model", ""), cfg.get("model", "unknown")
+            )
+            dataset = cfg.get("dataset", "unknown").upper()
+            epochs = cfg.get("epochs", "?")
+            new_group = f"{model} | {dataset} | ep{epochs}"
+            if run.group != new_group:
+                run.group = new_group
+                run.save()
+                print(f"  {run.name[:55]:<55} → {new_group}")
+                updated += 1
+        print(f"Done. {updated}/{len(runs)} runs updated.")
+
     # ── 3. Comparison table ───────────────────────────────────────────────────
     def table(self):
         """Build/update the comparison table in W&B."""
@@ -438,7 +461,7 @@ def main():
     )
     parser.add_argument(
         "command",
-        choices=["upload", "rename", "table", "sync"],
+        choices=["upload", "rename", "regroup", "table", "sync"],
         help="Operation to run",
     )
     parser.add_argument(
@@ -462,6 +485,8 @@ def main():
         tools.rename()
     elif args.command == "table":
         tools.table()
+    elif args.command == "regroup":
+        tools.regroup()
     elif args.command == "sync":
         tools.sync()
 
