@@ -259,12 +259,18 @@ def main(cfg: dict):
             _wandb_cfg["scheduler_type"] = "ETS"
         else:
             _wandb_cfg["scheduler_type"] = "none"
+        from models.registry import MODEL_DISPLAY_NAMES
+
+        _model_tag = MODEL_DISPLAY_NAMES.get(cfg["model"], cfg["model"])
+        _folder = f"{_model_tag} | {cfg['dataset'].upper()} | ep{cfg['epochs']}"
         wandb.init(
             project="curriculum-augmentation",
             name=f"{cfg['experiment_name']}  [{cfg['run_ts']}]",
             config=_wandb_cfg,
-            group=_group,
-            tags=[_group, _label],
+            group=_folder,
+            tags=[_folder, _label],
+            id=None,
+            resume="never",
         )
 
     train_transform, val_transform = build_transforms(cfg)
