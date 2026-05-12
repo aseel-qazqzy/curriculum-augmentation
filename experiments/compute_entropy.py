@@ -166,6 +166,10 @@ def assign_egs_difficulties(
                 f"(>{egs_max_epochs_per_tier} epochs in tier)"
             )
 
+    # Sequential gate: a sample can only advance one tier per update (T1→T2→T3)
+    # prevents samples from skipping T2 entirely when entropy drops fast
+    candidate_tiers = np.minimum(candidate_tiers, max_tier_reached + 1)
+
     # Min-time gate: only advance samples that have spent enough time in their tier
     can_advance = time_in_tier >= egs_min_epochs_per_tier
 
