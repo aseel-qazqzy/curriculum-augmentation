@@ -26,11 +26,20 @@ class _Tee:
 
     def write(self, msg: str):
         self._console.write(msg)
-        self._log_file.write(msg)
+        try:
+            self._log_file.write(msg)
+        except OSError:
+            pass
 
     def flush(self):
-        self._console.flush()
-        self._log_file.flush()
+        try:
+            self._console.flush()
+        except OSError:
+            pass
+        try:
+            self._log_file.flush()
+        except OSError:
+            pass
 
     def isatty(self) -> bool:
         return False
