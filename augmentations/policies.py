@@ -25,6 +25,7 @@ _TIER_OPS = {
         "auto_contrast",
         "equalize",
         "sharpness",
+        "perspective",
     ],
     3: [
         "flip",
@@ -37,15 +38,20 @@ _TIER_OPS = {
         "auto_contrast",
         "equalize",
         "sharpness",
+        "perspective",
         "grayscale",
         "cutout",
         "contrast",
         "brightness",
+        "blur",
+        "solarize",
+        "posterize",
+        "invert",
     ],
 }
 
 # How many ops are randomly sampled per tier (subsampling adds within-tier diversity).
-_TIER_N_OPS = {1: 3, 2: 5, 3: 7}
+_TIER_N_OPS = {1: 3, 2: 5, 3: 8}
 
 # Strength as a fraction of the ceiling (self.strength).
 # Tier 3 always equals the ceiling; lower tiers scale down proportionally.
@@ -128,8 +134,8 @@ class ThreeTierCurriculumTransform:
 
     TIER_LABELS = {
         1: "Tier 1 [flip, crop, translate_x/y]",
-        2: "Tier 2 [+color_jitter, rotation, shear, auto_contrast, equalize, sharpness]",
-        3: "Tier 3 [+grayscale, cutout, contrast, brightness]",
+        2: "Tier 2 [+color_jitter, rotation, shear, auto_contrast, equalize, sharpness, perspective]",
+        3: "Tier 3 [+grayscale, cutout, contrast, brightness, blur, solarize, posterize, invert]",
     }
 
     def __init__(

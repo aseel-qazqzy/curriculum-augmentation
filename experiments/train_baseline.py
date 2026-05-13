@@ -144,6 +144,17 @@ def main(cfg: dict):
     seed = cfg.get("seed", 42)
     cfg["experiment_name"] = f"{cfg['experiment_name']}_s{seed}"
 
+    # Auto-tag with augmentation pool size so runs with different op sets never collide.
+    if cfg.get("augmentation") in (
+        "tiered_curriculum",
+        "static",
+        "static_mixing",
+        "random",
+    ):
+        from augmentations.policies import _TIER_OPS
+
+        cfg["experiment_name"] = f"{cfg['experiment_name']}_p{len(_TIER_OPS[3])}"
+
     cfg["run_ts"] = datetime.now().strftime("%Y-%m-%d %H:%M")
     tee = setup_logging(cfg)
     set_seed(cfg["seed"])
@@ -166,6 +177,7 @@ def main(cfg: dict):
         from augmentations.policies import (
             _TIER_STRENGTH_FRACS,
             _TIER_N_OPS,
+            _TIER_OPS,
             _STRENGTH_RAMP_EPOCHS,
         )
 
@@ -214,12 +226,12 @@ def main(cfg: dict):
                 f"  |  sample {_TIER_N_OPS[1]}/4  |  strength {s1:.2f}"
             )
             print(
-                f"  Tier 2 ({t2_str}): +color_jitter, rotation, shear, auto_contrast, equalize, sharpness"
-                f"  |  sample {_TIER_N_OPS[2]}/10  |  strength {s2:.2f} (ramp {_STRENGTH_RAMP_EPOCHS} ep)"
+                f"  Tier 2 ({t2_str}): +color_jitter, rotation, shear, auto_contrast, equalize, sharpness, perspective"
+                f"  |  sample {_TIER_N_OPS[2]}/{len(_TIER_OPS[2])}  |  strength {s2:.2f} (ramp {_STRENGTH_RAMP_EPOCHS} ep)"
             )
             print(
-                f"  Tier 3 ({t3_str}): +grayscale, cutout, contrast, brightness"
-                f"  |  sample {_TIER_N_OPS[3]}/14  |  strength {s3:.2f} (ramp {_STRENGTH_RAMP_EPOCHS} ep)"
+                f"  Tier 3 ({t3_str}): +grayscale, cutout, contrast, brightness, blur, solarize, posterize, invert"
+                f"  |  sample {_TIER_N_OPS[3]}/{len(_TIER_OPS[3])}  |  strength {s3:.2f} (ramp {_STRENGTH_RAMP_EPOCHS} ep)"
             )
             mix_mode = cfg.get("mix_mode", "both")
             if mix_mode != "none":
@@ -786,7 +798,10 @@ def parse_args():
     parser.add_argument("--lr", type=float, default=None)
     parser.add_argument("--optimizer", type=str, default=None, choices=["sgd", "adam"])
     parser.add_argument(
-        "--scheduler", type=str, default=None, choices=["multistep", "cosine", "none"]
+        "--scheduler",
+        type=str,
+        default=None,
+        choices=["multistep", "cosine", "cosine_wr", "none"],
     )
     parser.add_argument("--experiment_name", type=str, default=None)
     parser.add_argument("--checkpoint_dir", type=str, default=None)
@@ -932,6 +947,18 @@ def parse_args():
         default=None,
         help="DataLoader worker processes (default: 4; set 0 for single-process debugging)",
     )
+    parser.add_argument(
+        "--wr_t0",
+        type=int,
+        default=None,
+        help="cosine_wr: first restart cycle length in epochs (default: 50)",
+    )
+    parser.add_argument(
+        "--wr_t_mult",
+        type=int,
+        default=None,
+        help="cosine_wr: cycle length multiplier — 1=equal cycles, 2=doubling (default: 1)",
+    )
 
     return parser.parse_args()
 
@@ -976,6 +1003,8 @@ if __name__ == "__main__":
         "seed",
         "label_smoothing",
         "num_workers",
+        "wr_t0",
+        "wr_t_mult",
     ]:
         val = getattr(args, key, None)
         if val is not None:
