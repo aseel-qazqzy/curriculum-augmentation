@@ -153,6 +153,34 @@ def build_scheduler(optimizer, cfg: dict):
             optimizer, milestones=milestones, gamma=0.1
         )
         print(f"  Scheduler   : MultiStepLR | milestones={milestones} | gamma=0.1")
+    elif name == "cosine_wr":
+        warmup_epochs = cfg.get("warmup_epochs", 5)
+        eta_min = cfg.get("eta_min", 1e-6)
+        milestones = []
+        t0 = cfg.get("wr_t0", 50)
+        t_mult = cfg.get("wr_t_mult", 1)
+        cosine_sched = optim.lr_scheduler.CosineAnnealingWarmRestarts(
+            optimizer, T_0=t0, T_mult=t_mult, eta_min=eta_min
+        )
+        if warmup_epochs > 0:
+            warmup_sched = optim.lr_scheduler.LinearLR(
+                optimizer, start_factor=0.1, end_factor=1.0, total_iters=warmup_epochs
+            )
+            scheduler = optim.lr_scheduler.SequentialLR(
+                optimizer,
+                schedulers=[warmup_sched, cosine_sched],
+                milestones=[warmup_epochs],
+            )
+            print(
+                f"  Scheduler   : CosineAnnealingWarmRestarts + LinearWarmup "
+                f"| warmup={warmup_epochs} ep | T_0={t0} | T_mult={t_mult} | eta_min={eta_min}"
+            )
+        else:
+            scheduler = cosine_sched
+            print(
+                f"  Scheduler   : CosineAnnealingWarmRestarts "
+                f"| T_0={t0} | T_mult={t_mult} | eta_min={eta_min}"
+            )
     elif name == "cosine":
         warmup_epochs = cfg.get("warmup_epochs", 5)
         eta_min = cfg.get("eta_min", 1e-6)

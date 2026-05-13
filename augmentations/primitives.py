@@ -119,6 +119,17 @@ def enhance_brightness(img: Image.Image, strength: float = 0.5) -> Image.Image:
     return ImageEnhance.Brightness(img).enhance(max(0.1, factor))
 
 
+def random_perspective(img: Image.Image, strength: float = 0.5) -> Image.Image:
+    distortion = 0.3 * strength
+    return T.RandomPerspective(distortion_scale=distortion, p=0.5)(img)
+
+
+def invert(img: Image.Image, strength: float = 1.0) -> Image.Image:
+    return (
+        ImageOps.invert(img.convert("RGB")) if random.random() < 0.5 * strength else img
+    )
+
+
 AUGMENTATION_REGISTRY = {
     # Tier 1 — geometry only, semantics fully preserved
     "flip": (random_flip, 1, 0.0),
@@ -132,12 +143,14 @@ AUGMENTATION_REGISTRY = {
     "color_jitter": (color_jitter, 2, 0.35),
     "rotation": (random_rotation, 2, 0.40),
     "shear": (random_shear, 2, 0.45),
+    "perspective": (random_perspective, 2, 0.48),
     # Tier 3 — information removal / aggressive distortion
     "grayscale": (random_grayscale, 3, 0.55),
     "contrast": (enhance_contrast, 3, 0.60),
     "brightness": (enhance_brightness, 3, 0.65),
     "blur": (gaussian_blur, 3, 0.68),
     "cutout": (cutout, 3, 0.72),
+    "invert": (invert, 3, 0.75),
     "solarize": (solarize, 3, 0.82),
     "posterize": (posterize, 3, 0.88),
 }
