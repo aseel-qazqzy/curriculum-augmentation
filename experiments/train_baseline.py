@@ -959,6 +959,12 @@ def parse_args():
         default=None,
         help="cosine_wr: cycle length multiplier — 1=equal cycles, 2=doubling (default: 1)",
     )
+    parser.add_argument(
+        "--warmup_epochs",
+        type=int,
+        default=None,
+        help="linear LR warmup before main scheduler; 0 = no warmup (default: 5)",
+    )
 
     return parser.parse_args()
 
@@ -1005,6 +1011,7 @@ if __name__ == "__main__":
         "num_workers",
         "wr_t0",
         "wr_t_mult",
+        "warmup_epochs",
     ]:
         val = getattr(args, key, None)
         if val is not None:
