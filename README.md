@@ -226,3 +226,10 @@ Results below are indicative targets for CIFAR-100 with ResNet-50 at augmentatio
 1. Does progressively introducing augmentation operations outperform applying them all from the first epoch?
 2. Is any observed improvement attributable to the curriculum ordering, or to the choice of operations alone?
 3. Does curriculum augmentation reduce overfitting as measured by the training–validation accuracy gap?
+
+---
+
+## Changelog
+
+### 2026-05-15
+- **analysis/wideresnet_cifar100/C1_tiered_ets_cosine_wr_s42.md** — Scheduler ablation: cosine_wr vs plain cosine on ETS curriculum, WideResNet-28-10, CIFAR-100, seed 42. cosine_wr achieved 77.27% test Top-1 (−4.57pp vs C1's 81.84%). cosine_wr ruled out for ETS runs.
