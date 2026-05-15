@@ -30,6 +30,9 @@ wandb/
 results/wandb/
 mlruns/
 
+# Claude Code
+.claude/
+
 # Environment
 .env
 *.env
