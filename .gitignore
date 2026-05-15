@@ -27,6 +27,7 @@ build/
 
 # Experiment tracking
 wandb/
+results/wandb/
 mlruns/
 
 # Environment

@@ -1,5 +1,6 @@
 """augmentations/policies.py — augmentation policies used in experiments."""
 
+import json
 import random
 
 import torch
@@ -58,6 +59,27 @@ _TIER_N_OPS = {1: 3, 2: 5, 3: 8}
 _TIER_STRENGTH_FRACS = {1: 0.40, 2: 0.70, 3: 1.0}
 
 _STRENGTH_RAMP_EPOCHS = 5  # epochs to linearly ramp strength at each tier boundary
+
+
+def _load_tier_ops(ranking_file: str) -> tuple[dict[int, list[str]], dict[str, float]]:
+    """Derive tier pools and per-op calibrated strengths from a loss-ranked JSON.
+
+    Returns:
+        tier_ops   — cumulative pool dicts matching manual pool sizes
+        op_strengths — {op_name: recommended_strength} (empty dict if not in JSON)
+    """
+    with open(ranking_file) as f:
+        data = json.load(f)
+    ranked = data["ranked_ops"]  # sorted by delta_loss ascending
+    t1 = data["metadata"].get("t1_pool_size", 4)
+    t2 = data["metadata"].get("t2_cumulative_size", 11)
+    tier_ops = {1: ranked[:t1], 2: ranked[:t2], 3: ranked}
+    op_strengths = {
+        r["name"]: r["recommended_strength"]
+        for r in data["ops"]
+        if "recommended_strength" in r
+    }
+    return tier_ops, op_strengths
 
 
 class AugmentationPolicy:
@@ -144,6 +166,7 @@ class ThreeTierCurriculumTransform:
         t1: int = 33,
         t2: int = 66,
         strength: float = FIXED_STRENGTH,
+        op_ranking_file: str | None = None,
     ):
         mean = STATS[dataset]["mean"]
         std = STATS[dataset]["std"]
@@ -158,6 +181,16 @@ class ThreeTierCurriculumTransform:
         # Used by _current_strength() and mix_scale() so ramp boundaries are
         # correct under LPS/EGS (which advance tiers at different epochs than t1/t2).
         self._tier_start_epoch: dict[int, int] = {}
+        # Tier op pools and per-op calibrated strengths.
+        # When op_ranking_file is set: loss-based pool order + recommended strengths.
+        # When None: manual _TIER_OPS, uniform strength ceiling from self.strength.
+        if op_ranking_file:
+            self._tier_ops, self._op_strengths = _load_tier_ops(op_ranking_file)
+            self._op_ranking = "loss"
+        else:
+            self._tier_ops = _TIER_OPS
+            self._op_strengths: dict[str, float] = {}
+            self._op_ranking = "manual"
 
     def set_epoch(self, epoch: int) -> None:
         self.epoch = epoch
@@ -185,7 +218,14 @@ class ThreeTierCurriculumTransform:
         return 3
 
     def tier_label(self) -> str:
-        return self.TIER_LABELS[self.tier()]
+        t = self.tier()
+        pool = self._tier_ops[t]
+        n_sample = min(_TIER_N_OPS[t], len(pool))
+        if t == 1:
+            return f"Tier 1 [{', '.join(pool)}]  {n_sample}/{len(pool)} ops"
+        prev_pool = self._tier_ops[t - 1]
+        new_ops = [op for op in pool if op not in prev_pool]
+        return f"Tier {t} [+{', '.join(new_ops)}]  {n_sample}/{len(pool)} ops"
 
     def _tier_strength(self, tier: int) -> float:
         return self.strength * _TIER_STRENGTH_FRACS[tier]
@@ -232,13 +272,23 @@ class ThreeTierCurriculumTransform:
 
     def __call__(self, img):
         tier = self.tier()
-        pool = _TIER_OPS[tier]
-        n = _TIER_N_OPS[tier]
+        pool = self._tier_ops[tier]
+        n = min(_TIER_N_OPS[tier], len(pool))
         active = random.sample(pool, n)
         s = self._current_strength()
-        for name in active:
-            fn, _, _ = AUGMENTATION_REGISTRY[name]
-            img = fn(img, s)
+        if self._op_strengths:
+            # Per-op calibrated ceiling scaled by the current tier fraction + ramp.
+            # tier_frac isolates the fractional part of _current_strength so the
+            # curriculum progression still applies on top of per-op calibration.
+            tier_frac = s / self.strength if self.strength > 0 else 1.0
+            for name in active:
+                fn, _, _ = AUGMENTATION_REGISTRY[name]
+                op_s = min(1.0, self._op_strengths.get(name, self.strength) * tier_frac)
+                img = fn(img, op_s)
+        else:
+            for name in active:
+                fn, _, _ = AUGMENTATION_REGISTRY[name]
+                img = fn(img, s)
         return self.normalize(self.to_tensor(img))
 
 
@@ -251,15 +301,21 @@ class ThreeTierCurriculumAugmentation(AugmentationPolicy):
         t1: int = 33,
         t2: int = 66,
         strength: float = FIXED_STRENGTH,
+        op_ranking_file: str | None = None,
     ):
         super().__init__(dataset=dataset)
         self.t1 = t1
         self.t2 = t2
         self.strength = strength
+        self.op_ranking_file = op_ranking_file
 
     def get_train_transform(self) -> ThreeTierCurriculumTransform:
         return ThreeTierCurriculumTransform(
-            dataset=self.dataset, t1=self.t1, t2=self.t2, strength=self.strength
+            dataset=self.dataset,
+            t1=self.t1,
+            t2=self.t2,
+            strength=self.strength,
+            op_ranking_file=self.op_ranking_file,
         )
 
 

@@ -58,6 +58,8 @@ BASE_CONFIG = {
     # Cosine warm restarts (SGDR) — active when --scheduler cosine_wr
     "wr_t0": 50,  # first restart cycle length in epochs
     "wr_t_mult": 1,  # cycle multiplier: 1=equal cycles, 2=doubling cycles
+    # Op ranking — None = manual tier design; path to aug_op_ranking.json = loss-based
+    "op_ranking_file": None,
     # Entropy-Guided Scheduling (EGS)
     "egs_update_freq": 5,  # recompute per-sample entropy every N epochs
     "egs_min_epochs_per_tier": 20,  # min epochs in a tier before a sample can advance

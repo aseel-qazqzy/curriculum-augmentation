@@ -99,6 +99,7 @@ def build_transforms(cfg: dict):
             t1=_resolve_tier(cfg.get("tier_t1"), 0.33, epochs),
             t2=_resolve_tier(cfg.get("tier_t2"), 0.66, epochs),
             strength=cfg.get("fixed_strength", 0.7),
+            op_ranking_file=cfg.get("op_ranking_file"),
         )
         return policy.get_train_transform(), policy.get_val_transform()
 
@@ -221,16 +222,18 @@ def main(cfg: dict):
             t1_str = "loss-guided" if is_lps else f"ep   1-{t1:2d}"
             t2_str = "loss-guided" if is_lps else f"ep {t1 + 1:2d}-{t2:2d}"
             t3_str = "loss-guided" if is_lps else f"ep {t2 + 1:2d}-end"
+            _t2_new = [op for op in _TIER_OPS[2] if op not in _TIER_OPS[1]]
+            _t3_new = [op for op in _TIER_OPS[3] if op not in _TIER_OPS[2]]
             print(
-                f"  Tier 1 ({t1_str}): flip, crop, translate_x/y"
-                f"  |  sample {_TIER_N_OPS[1]}/4  |  strength {s1:.2f}"
+                f"  Tier 1 ({t1_str}): {', '.join(_TIER_OPS[1])}"
+                f"  |  sample {_TIER_N_OPS[1]}/{len(_TIER_OPS[1])}  |  strength {s1:.2f}"
             )
             print(
-                f"  Tier 2 ({t2_str}): +color_jitter, rotation, shear, auto_contrast, equalize, sharpness, perspective"
+                f"  Tier 2 ({t2_str}): +{', '.join(_t2_new)}"
                 f"  |  sample {_TIER_N_OPS[2]}/{len(_TIER_OPS[2])}  |  strength {s2:.2f} (ramp {_STRENGTH_RAMP_EPOCHS} ep)"
             )
             print(
-                f"  Tier 3 ({t3_str}): +grayscale, cutout, contrast, brightness, blur, solarize, posterize, invert"
+                f"  Tier 3 ({t3_str}): +{', '.join(_t3_new)}"
                 f"  |  sample {_TIER_N_OPS[3]}/{len(_TIER_OPS[3])}  |  strength {s3:.2f} (ramp {_STRENGTH_RAMP_EPOCHS} ep)"
             )
             mix_mode = cfg.get("mix_mode", "both")
@@ -249,8 +252,11 @@ def main(cfg: dict):
                 )
     if cfg["augmentation"] == "static_mixing":
         mix_mode = cfg.get("mix_mode", "both")
+        from augmentations.policies import _TIER_OPS, _TIER_N_OPS
+
         print(
-            f"  Ops         : all 7 from epoch 1  |  strength {cfg.get('fixed_strength', 0.7)}"
+            f"  Ops         : sample {_TIER_N_OPS[3]}/{len(_TIER_OPS[3])} from full pool, epoch 1"
+            f"  |  strength {cfg.get('fixed_strength', 0.7)}"
         )
         print(
             f"  Mixing      : {mix_mode}  alpha={cfg.get('mix_alpha', 1.0)}  "
@@ -506,7 +512,20 @@ def main(cfg: dict):
             egs_state["curriculum_dataset"].set_difficulties(difficulties)
 
         if hasattr(train_transform, "set_epoch"):
+            _prev_tier = (
+                train_transform.tier() if hasattr(train_transform, "tier") else None
+            )
             train_transform.set_epoch(epoch)
+            _new_tier = (
+                train_transform.tier() if hasattr(train_transform, "tier") else None
+            )
+            if _prev_tier is not None and _new_tier != _prev_tier:
+                _pool = train_transform._tier_ops[_new_tier]
+                _n = min(_TIER_N_OPS[_new_tier], len(_pool))
+                print(
+                    f"\n  >>> Tier {_new_tier} activated (epoch {epoch})"
+                    f" | pool: {len(_pool)} ops, sample {_n}/batch <<<"
+                )
 
         if cfg["augmentation"] == "static_mixing":
             active_mixer = mixer  # always on from epoch 1
@@ -965,6 +984,12 @@ def parse_args():
         default=None,
         help="linear LR warmup before main scheduler; 0 = no warmup (default: 5)",
     )
+    parser.add_argument(
+        "--op_ranking_file",
+        type=str,
+        default=None,
+        help="Path to aug_op_ranking.json from rank_aug_ops.py; enables loss-based tier ordering (default: manual)",
+    )
 
     return parser.parse_args()
 
@@ -1012,6 +1037,7 @@ if __name__ == "__main__":
         "wr_t0",
         "wr_t_mult",
         "warmup_epochs",
+        "op_ranking_file",
     ]:
         val = getattr(args, key, None)
         if val is not None:
