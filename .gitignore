@@ -2,6 +2,8 @@
 *.pdf
 *.md
 !README.md
+!analysis/thesis_results_tables.md
+!analysis/experiments_plan.md
 CHANGELOG.md
 CLAUDE.md
 PROJECT_EXPLANATION.md
