@@ -64,7 +64,9 @@ def build_transforms(cfg: dict):
         from augmentations.policies import StaticAugmentation
 
         policy = StaticAugmentation(
-            dataset=dataset, strength=cfg.get("fixed_strength", 0.7)
+            dataset=dataset,
+            strength=cfg.get("fixed_strength", 0.7),
+            op_pool=cfg.get("op_pool", 19),
         )
         return policy.get_train_transform(), policy.get_val_transform()
 
@@ -100,6 +102,7 @@ def build_transforms(cfg: dict):
             t2=_resolve_tier(cfg.get("tier_t2"), 0.66, epochs),
             strength=cfg.get("fixed_strength", 0.7),
             op_ranking_file=cfg.get("op_ranking_file"),
+            op_pool=cfg.get("op_pool", 19),
         )
         return policy.get_train_transform(), policy.get_val_transform()
 
@@ -152,9 +155,10 @@ def main(cfg: dict):
         "static_mixing",
         "random",
     ):
-        from augmentations.policies import _TIER_OPS
+        from augmentations.policies import get_tier_ops
 
-        cfg["experiment_name"] = f"{cfg['experiment_name']}_p{len(_TIER_OPS[3])}"
+        _pool, _ = get_tier_ops(cfg.get("op_pool", 19))
+        cfg["experiment_name"] = f"{cfg['experiment_name']}_p{len(_pool[3])}"
 
     cfg["run_ts"] = datetime.now().strftime("%Y-%m-%d %H:%M")
     tee = setup_logging(cfg)
@@ -990,6 +994,13 @@ def parse_args():
         default=None,
         help="Path to aug_op_ranking.json from rank_aug_ops.py; enables loss-based tier ordering (default: manual)",
     )
+    parser.add_argument(
+        "--op_pool",
+        type=int,
+        default=None,
+        choices=[14, 19],
+        help="Augmentation pool size: 14=original design, 19=expanded pool (default: 19)",
+    )
 
     return parser.parse_args()
 
@@ -1038,6 +1049,7 @@ if __name__ == "__main__":
         "wr_t_mult",
         "warmup_epochs",
         "op_ranking_file",
+        "op_pool",
     ]:
         val = getattr(args, key, None)
         if val is not None:

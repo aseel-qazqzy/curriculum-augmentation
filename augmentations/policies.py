@@ -51,8 +51,50 @@ _TIER_OPS = {
     ],
 }
 
+# 14-op pool — original design (no perspective/blur/solarize/posterize/invert)
+_TIER_OPS_14 = {
+    1: ["flip", "crop", "translate_x", "translate_y"],
+    2: [
+        "flip",
+        "crop",
+        "translate_x",
+        "translate_y",
+        "color_jitter",
+        "rotation",
+        "shear",
+        "auto_contrast",
+        "equalize",
+        "sharpness",
+    ],
+    3: [
+        "flip",
+        "crop",
+        "translate_x",
+        "translate_y",
+        "color_jitter",
+        "rotation",
+        "shear",
+        "auto_contrast",
+        "equalize",
+        "sharpness",
+        "grayscale",
+        "cutout",
+        "contrast",
+        "brightness",
+    ],
+}
+_TIER_N_OPS_14 = {1: 3, 2: 5, 3: 7}
+
 # How many ops are randomly sampled per tier (subsampling adds within-tier diversity).
 _TIER_N_OPS = {1: 3, 2: 5, 3: 8}
+
+
+def get_tier_ops(op_pool: int = 19) -> tuple[dict, dict]:
+    """Return (_TIER_OPS, _TIER_N_OPS) for the requested pool size (14 or 19)."""
+    if op_pool == 14:
+        return _TIER_OPS_14, _TIER_N_OPS_14
+    return _TIER_OPS, _TIER_N_OPS
+
 
 # Strength as a fraction of the ceiling (self.strength).
 # Tier 3 always equals the ceiling; lower tiers scale down proportionally.
@@ -114,15 +156,21 @@ class _FullStaticTransform:
     curriculum progression, not the number of ops per image.
     """
 
-    def __init__(self, dataset: str = "cifar100", strength: float = FIXED_STRENGTH):
+    def __init__(
+        self,
+        dataset: str = "cifar100",
+        strength: float = FIXED_STRENGTH,
+        op_pool: int = 19,
+    ):
         mean = STATS[dataset]["mean"]
         std = STATS[dataset]["std"]
         self.normalize = T.Normalize(mean, std)
         self.to_tensor = T.ToTensor()
         self.strength = strength
+        self._pool, self._n_ops = get_tier_ops(op_pool)
 
     def __call__(self, img):
-        active = random.sample(_TIER_OPS[3], _TIER_N_OPS[3])
+        active = random.sample(self._pool[3], self._n_ops[3])
         for name in active:
             fn, _, _ = AUGMENTATION_REGISTRY[name]
             img = fn(img, self.strength)
@@ -130,14 +178,22 @@ class _FullStaticTransform:
 
 
 class StaticAugmentation(AugmentationPolicy):
-    """All 7 ops at FIXED_STRENGTH from epoch 1 — no schedule."""
+    """All ops at FIXED_STRENGTH from epoch 1 — no schedule."""
 
-    def __init__(self, dataset: str = "cifar10", strength: float = FIXED_STRENGTH):
+    def __init__(
+        self,
+        dataset: str = "cifar10",
+        strength: float = FIXED_STRENGTH,
+        op_pool: int = 19,
+    ):
         super().__init__(dataset=dataset)
         self.strength = strength
+        self.op_pool = op_pool
 
     def get_train_transform(self) -> "_FullStaticTransform":
-        return _FullStaticTransform(dataset=self.dataset, strength=self.strength)
+        return _FullStaticTransform(
+            dataset=self.dataset, strength=self.strength, op_pool=self.op_pool
+        )
 
 
 class ThreeTierCurriculumTransform:
@@ -167,6 +223,7 @@ class ThreeTierCurriculumTransform:
         t2: int = 66,
         strength: float = FIXED_STRENGTH,
         op_ranking_file: str | None = None,
+        op_pool: int = 19,
     ):
         mean = STATS[dataset]["mean"]
         std = STATS[dataset]["std"]
@@ -177,18 +234,13 @@ class ThreeTierCurriculumTransform:
         self.epoch = 1
         self.strength = strength  # ceiling — reached at Tier 3
         self._forced_tier = None  # set by loss/entropy schedulers; None = time-based
-        # Records the epoch at which each tier was activated via set_tier().
-        # Used by _current_strength() and mix_scale() so ramp boundaries are
-        # correct under LPS/EGS (which advance tiers at different epochs than t1/t2).
         self._tier_start_epoch: dict[int, int] = {}
-        # Tier op pools and per-op calibrated strengths.
-        # When op_ranking_file is set: loss-based pool order + recommended strengths.
-        # When None: manual _TIER_OPS, uniform strength ceiling from self.strength.
         if op_ranking_file:
             self._tier_ops, self._op_strengths = _load_tier_ops(op_ranking_file)
+            self._n_ops = _TIER_N_OPS  # ranked pool always uses 19-op sample counts
             self._op_ranking = "loss"
         else:
-            self._tier_ops = _TIER_OPS
+            self._tier_ops, self._n_ops = get_tier_ops(op_pool)
             self._op_strengths: dict[str, float] = {}
             self._op_ranking = "manual"
 
@@ -273,7 +325,7 @@ class ThreeTierCurriculumTransform:
     def __call__(self, img):
         tier = self.tier()
         pool = self._tier_ops[tier]
-        n = min(_TIER_N_OPS[tier], len(pool))
+        n = min(self._n_ops[tier], len(pool))
         active = random.sample(pool, n)
         s = self._current_strength()
         if self._op_strengths:
@@ -302,12 +354,14 @@ class ThreeTierCurriculumAugmentation(AugmentationPolicy):
         t2: int = 66,
         strength: float = FIXED_STRENGTH,
         op_ranking_file: str | None = None,
+        op_pool: int = 19,
     ):
         super().__init__(dataset=dataset)
         self.t1 = t1
         self.t2 = t2
         self.strength = strength
         self.op_ranking_file = op_ranking_file
+        self.op_pool = op_pool
 
     def get_train_transform(self) -> ThreeTierCurriculumTransform:
         return ThreeTierCurriculumTransform(
@@ -316,6 +370,7 @@ class ThreeTierCurriculumAugmentation(AugmentationPolicy):
             t2=self.t2,
             strength=self.strength,
             op_ranking_file=self.op_ranking_file,
+            op_pool=self.op_pool,
         )
 
 
