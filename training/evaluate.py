@@ -4,37 +4,43 @@ Curriculum-Style Augmentation for Image Classification
 
 Evaluates a trained model against 19 corruption types at 5 severity levels.
 Computes mean Corruption Error (mCE) — the standard robustness metric.
+ # Download CIFAR-100-C (one time, on cluster)
+  cd ~/curriculum-augmentation/data/raw
+  wget https://zenodo.org/record/3555552/files/CIFAR-100-C.tar
+  tar -xf CIFAR-100-C.tar
 
-Usage:
-    # Download CIFAR-10-C (once)
-    wget https://zenodo.org/record/2535967/files/CIFAR-10-C.tar
-    tar -xf CIFAR-10-C.tar -C /Users/aseelahmedal-qazqzy/Documents/Hildeshiem University/Thesis/curriculum-augmentation/data/raw
+  Then run evaluation for each checkpoint (on cluster):
 
-    # Then evaluate your best checkpoint
-    python training/evaluate.py \
-    --checkpoint checkpoints/resnet18_static_aug_sgd_multistep_best.pth \
-    --data_dir   data/raw/CIFAR-10-C \
-    --dataset    cifar10
-    # Evaluate a checkpoint on CIFAR-10-C
-    python training/evaluate.py \
-        --checkpoint checkpoints/cifar10_baseline_best.pth \
-        --data_dir   data/raw/CIFAR-10-C \
-        --dataset    cifar10
+  # No augmentation
+  python training/evaluate.py \
+      --checkpoint
+  checkpoints/wideresnet_none_sgd_cosine_ep100_cifar100_s42_best.pth \
+      --data_dir data/raw/CIFAR-100-C --dataset cifar100
 
-    # Evaluate and compare multiple checkpoints
-    python training/evaluate.py \
-        --checkpoint checkpoints/cifar10_curriculum_cosine_best.pth \
-        --data_dir   data/raw/CIFAR-10-C \
-        --dataset    cifar10 \
-        --baseline_acc 75.28   # clean accuracy of AlexNet baseline (for mCE)
+  # Static mixing (p19)
+  python training/evaluate.py \
+      --checkpoint checkpoints/wideresnet_static_mixing_sgd_cosine_ep100_cifar
+  100_s42_p19_best.pth \
+      --data_dir data/raw/CIFAR-100-C --dataset cifar100
 
-Download CIFAR-10-C from:
-    https://zenodo.org/record/2535967   → CIFAR-10-C.tar
-    https://zenodo.org/record/3555552   → CIFAR-100-C.tar
+  # ETS (p19)
+  python training/evaluate.py \
+      --checkpoint checkpoints/wideresnet_tiered_ets_mix_both_sgd_cosine_ep100
+  _cifar100_s42_p19_best.pth \
+      --data_dir data/raw/CIFAR-100-C --dataset cifar100
 
-Extract into:
-    data/raw/CIFAR-10-C/   → contains .npy files + labels.npy
-    data/raw/CIFAR-100-C/  → contains .npy files + labels.npy
+  # LPS (p19)
+  python training/evaluate.py \
+      --checkpoint checkpoints/wideresnet_tiered_lps_mix_both_sgd_cosine_ep100
+  _cifar100_s42_p19_best.pth \
+      --data_dir data/raw/CIFAR-100-C --dataset cifar100
+
+  # EGS (p19)
+  python training/evaluate.py \
+      --checkpoint checkpoints/wideresnet_tiered_egs_freq5_mix_both_sgd_cosine
+  _ep100_cifar100_s42_p19_best.pth \
+      --data_dir data/raw/CIFAR-100-C --dataset cifar100
+
 """
 
 import os
@@ -121,19 +127,12 @@ ALEXNET_BASELINE = {
 def load_model(checkpoint_path: str, num_classes: int, device):
     if not Path(checkpoint_path).exists():
         raise FileNotFoundError(f"Checkpoint not found: {checkpoint_path}")
-    ckpt = torch.load(checkpoint_path, map_location=device)
-    cfg = ckpt.get("cfg", {})
+    ckpt = torch.load(checkpoint_path, map_location=device, weights_only=False)
 
-    model_name = cfg.get("model", {}).get("name", "resnet18").lower()
+    from models.registry import get_model
 
-    if model_name == "resnet18":
-        model = models.resnet18(pretrained=False)
-        model.fc = nn.Linear(model.fc.in_features, num_classes)
-    elif model_name == "resnet50":
-        model = models.resnet50(pretrained=False)
-        model.fc = nn.Linear(model.fc.in_features, num_classes)
-    else:
-        raise ValueError(f"Unknown model: {model_name}")
+    model_name = ckpt.get("model_name", "resnet18")
+    model = get_model(model_name, num_classes=num_classes)
 
     model.load_state_dict(ckpt["model_state_dict"])
     model = model.to(device)
@@ -141,10 +140,11 @@ def load_model(checkpoint_path: str, num_classes: int, device):
 
     console.print(f"Loaded checkpoint: {checkpoint_path}")
     console.print(
-        f"   Trained for {ckpt.get('epoch', '?')} epochs | "
+        f"   Model: {model_name} | "
+        f"Trained for {ckpt.get('epoch', '?')} epochs | "
         f"Best val acc: {ckpt.get('val_acc', 0) * 100:.2f}%"
     )
-    return model, cfg
+    return model, ckpt
 
 
 # 2. CIFAR-C DATASET
@@ -265,20 +265,21 @@ def run_corruption_evaluation(
 
 def compute_mce(results: dict) -> float:
     """
-    Compute mean Corruption Error (mCE) normalized against AlexNet baseline.
+    Compute raw mean Corruption Error (mCE).
+
+    mCE = mean of (1 - accuracy) averaged over 5 severities,
+          then averaged across all available corruption types.
+
+    Raw (unnormalized) mCE is used because AlexNet baselines are
+    only published for CIFAR-10-C, not CIFAR-100-C.
     Lower is better.
     """
-    ce_scores = []
-    for corruption, severity_results in results.items():
-        if "mean" not in severity_results:
-            continue
-
-        model_error = severity_results["mean"]
-        if baseline_error := ALEXNET_BASELINE.get(corruption):
-            ce = model_error / baseline_error
-            ce_scores.append(ce)
-
-    return np.mean(ce_scores) if ce_scores else None
+    ce_scores = [
+        severity_results["mean"]
+        for severity_results in results.values()
+        if "mean" in severity_results
+    ]
+    return float(np.mean(ce_scores)) if ce_scores else None
 
 
 # 4. REPORTING
