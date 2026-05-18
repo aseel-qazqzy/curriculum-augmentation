@@ -69,4 +69,11 @@ BASE_CONFIG = {
     "egs_max_promote_frac": 0.15,  # max fraction of samples promoted per update (0=unlimited)
     "egs_mix_threshold": 0.75,  # fraction of samples in T3 required to activate mixing
     "egs_mix_min_epoch": 30,  # earliest epoch mixing can activate regardless of tier counts
+    "egs_mix_ramp_epochs": 10,  # epochs to linearly ramp mixer.p after mixing first activates
+    # Entropy thresholds as fraction of log(num_classes).
+    # WideResNet converges to low entropy fast — tighter thresholds prevent premature T3 floods.
+    # T2: H < t2_thresh * log(C)  (was 0.60, far too loose for CIFAR-100 + WRN)
+    # T3: H < t3_thresh * log(C)  (was 0.30, same issue)
+    "egs_t2_entropy_thresh": 0.40,
+    "egs_t3_entropy_thresh": 0.15,
 }

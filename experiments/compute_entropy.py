@@ -110,6 +110,8 @@ def assign_egs_difficulties(
     egs_min_epochs_per_tier: int = 20,
     egs_max_epochs_per_tier: int = 40,
     egs_max_promote_frac: float = 0.0,
+    egs_t2_entropy_thresh: float = 0.40,
+    egs_t3_entropy_thresh: float = 0.15,
 ) -> tuple[np.ndarray, np.ndarray, torch.Tensor]:
     """
     Convert entropy scores to per-sample difficulty values for CurriculumDataset.
@@ -124,8 +126,13 @@ def assign_egs_difficulties(
         per-sample safety net that only fires for genuinely stuck samples.
 
     Entropy thresholds (fraction of max entropy log(num_classes)):
-      Tier 2: H < 0.60 * log(C)  — moderately confident
-      Tier 3: H < 0.30 * log(C)  — highly confident
+      Tier 2: H < egs_t2_entropy_thresh * log(C)  (default 0.40 — moderately confident)
+      Tier 3: H < egs_t3_entropy_thresh * log(C)  (default 0.15 — highly confident)
+
+    Note on threshold calibration: for WideResNet + CIFAR-100, mean entropy drops to
+    ~0.95 * log(C) by epoch 20.  The old defaults (0.60, 0.30) caused almost the entire
+    dataset to qualify for T3 by epoch 20, with max_promote_frac as the only brake.
+    The tighter defaults (0.40, 0.15) restore meaningful entropy-based differentiation.
 
     Args:
         entropy_scores          : np.ndarray [N] — H(x) per sample from current model
@@ -136,6 +143,8 @@ def assign_egs_difficulties(
         epoch                   : current training epoch
         egs_min_epochs_per_tier : minimum epochs in a tier before advancement is allowed
         egs_max_epochs_per_tier : epochs in a tier after which a sample is force-bumped
+        egs_t2_entropy_thresh   : T2 promotion threshold as fraction of log(C) (default 0.40)
+        egs_t3_entropy_thresh   : T3 promotion threshold as fraction of log(C) (default 0.15)
 
     Returns:
         max_tier_reached   : np.ndarray [N] — updated (monotonically non-decreasing)
@@ -146,8 +155,8 @@ def assign_egs_difficulties(
 
     # Entropy-based candidate tier for each sample
     candidate_tiers = np.ones(len(entropy_scores), dtype=np.int32)
-    candidate_tiers[entropy_scores < 0.60 * log_C] = 2
-    candidate_tiers[entropy_scores < 0.30 * log_C] = 3
+    candidate_tiers[entropy_scores < egs_t2_entropy_thresh * log_C] = 2
+    candidate_tiers[entropy_scores < egs_t3_entropy_thresh * log_C] = 3
 
     # Per-sample time spent in current tier (epochs since last promotion)
     time_in_tier = epoch - tier_advance_epoch  # [N]

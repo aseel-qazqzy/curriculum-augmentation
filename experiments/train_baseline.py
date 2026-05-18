@@ -219,11 +219,14 @@ def main(cfg: dict):
                     f"(activates when {cfg.get('egs_mix_threshold', 0.75) * 100:.0f}% "
                     f"samples reach Tier 3, min epoch {cfg.get('egs_mix_min_epoch', 30)})"
                 )
+            t2_thr = cfg.get("egs_t2_entropy_thresh", 0.40)
+            t3_thr = cfg.get("egs_t3_entropy_thresh", 0.15)
             print(
-                f"  EGS         : update_freq={cfg.get('egs_update_freq', 10)} epochs  "
+                f"  EGS         : update_freq={cfg.get('egs_update_freq', 5)} epochs  "
                 f"| min_epochs_per_tier={cfg.get('egs_min_epochs_per_tier', 20)}  "
                 f"| max_epochs_per_tier={cfg.get('egs_max_epochs_per_tier', 40)}  "
-                f"| strength={cfg.get('fixed_strength', 0.7)}"
+                f"| strength={cfg.get('fixed_strength', 0.7)}  "
+                f"| H_thresh T2={t2_thr:.2f}×logC  T3={t3_thr:.2f}×logC"
             )
         else:
             t1_str = "loss-guided" if is_lps else f"ep   1-{t1:2d}"
@@ -381,7 +384,7 @@ def main(cfg: dict):
             "max_tier_reached": max_tier_reached,
             "tier_advance_epoch": tier_advance_epoch,
             "raw_entropy_loader": raw_entropy_loader,
-            "update_freq": cfg.get("egs_update_freq", 10),
+            "update_freq": cfg.get("egs_update_freq", 5),
             "strength": cfg.get("fixed_strength", 0.7),
             "num_classes": {"cifar100": 100, "tiny_imagenet": 200}.get(
                 cfg["dataset"], 10
@@ -389,6 +392,9 @@ def main(cfg: dict):
             "min_epochs_per_tier": cfg.get("egs_min_epochs_per_tier", 20),
             "max_epochs_per_tier": cfg.get("egs_max_epochs_per_tier", 40),
             "max_promote_frac": cfg.get("egs_max_promote_frac", 0.15),
+            "t2_entropy_thresh": cfg.get("egs_t2_entropy_thresh", 0.40),
+            "t3_entropy_thresh": cfg.get("egs_t3_entropy_thresh", 0.15),
+            "mix_start_epoch": -1,  # tracks when EGS mixing first activates (for ramp)
         }
 
         print(
@@ -396,7 +402,9 @@ def main(cfg: dict):
             f"entropy update every {egs_state['update_freq']} epochs | "
             f"min_epochs_per_tier={egs_state['min_epochs_per_tier']} | "
             f"max_epochs_per_tier={egs_state['max_epochs_per_tier']} | "
-            f"max_promote_frac={egs_state['max_promote_frac']}"
+            f"max_promote_frac={egs_state['max_promote_frac']} | "
+            f"H_thresh T2={egs_state['t2_entropy_thresh']:.2f}×logC "
+            f"T3={egs_state['t3_entropy_thresh']:.2f}×logC"
         )
 
     num_classes = {"cifar100": 100, "tiny_imagenet": 200}.get(cfg["dataset"], 10)
@@ -516,6 +524,8 @@ def main(cfg: dict):
                 egs_min_epochs_per_tier=egs_state["min_epochs_per_tier"],
                 egs_max_epochs_per_tier=egs_state["max_epochs_per_tier"],
                 egs_max_promote_frac=egs_state["max_promote_frac"],
+                egs_t2_entropy_thresh=egs_state["t2_entropy_thresh"],
+                egs_t3_entropy_thresh=egs_state["t3_entropy_thresh"],
             )
             egs_state["curriculum_dataset"].set_difficulties(difficulties)
 
@@ -539,13 +549,23 @@ def main(cfg: dict):
             active_mixer = mixer  # always on from epoch 1
         elif egs_state is not None and mixer is not None:
             # EGS mixing: activate when egs_mix_threshold of samples reach T3
-            # AND epoch >= egs_mix_min_epoch (prevents mixing before model is stable)
+            # AND epoch >= egs_mix_min_epoch (prevents mixing before model is stable).
+            # Ramp mixer.p linearly over egs_mix_ramp_epochs after first activation
+            # to avoid an abrupt disruption to the training signal.
             n_tier3 = int((egs_state["max_tier_reached"] == 3).sum())
             n_total = len(egs_state["max_tier_reached"])
             mix_threshold = cfg.get("egs_mix_threshold", 0.75)
             mix_min_epoch = cfg.get("egs_mix_min_epoch", 30)
+            mix_ramp_epochs = cfg.get("egs_mix_ramp_epochs", 10)
             if n_tier3 >= int(n_total * mix_threshold) and epoch >= mix_min_epoch:
-                mixer.p = cfg.get("mix_prob", 0.5)
+                if egs_state["mix_start_epoch"] < 0:
+                    egs_state["mix_start_epoch"] = epoch
+                ramp_scale = min(
+                    1.0,
+                    (epoch - egs_state["mix_start_epoch"] + 1)
+                    / max(1, mix_ramp_epochs),
+                )
+                mixer.p = cfg.get("mix_prob", 0.5) * ramp_scale
                 mixer.alpha = cfg.get("mix_alpha", 1.0)
                 active_mixer = mixer
             else:
@@ -630,11 +650,21 @@ def main(cfg: dict):
                 n1 = int((mtr == 1).sum())
                 n2 = int((mtr == 2).sum())
                 n3 = int((mtr == 3).sum())
-                mix_tag = (
-                    f"mix:{cfg.get('mix_mode', 'both')}"
-                    if active_mixer is not None
-                    else f"mix:pending({n3}/{len(mtr)} in T3)"
-                )
+                if active_mixer is not None:
+                    _ramp_ep = cfg.get("egs_mix_ramp_epochs", 10)
+                    _ms = egs_state["mix_start_epoch"]
+                    _scale = (
+                        min(1.0, (epoch - _ms + 1) / max(1, _ramp_ep))
+                        if _ms >= 0
+                        else 1.0
+                    )
+                    mix_tag = (
+                        f"mix:{cfg.get('mix_mode', 'both')}(p={active_mixer.p:.2f})"
+                        if _scale < 1.0
+                        else f"mix:{cfg.get('mix_mode', 'both')}"
+                    )
+                else:
+                    mix_tag = f"mix:pending({n3}/{len(mtr)} in T3)"
                 tier_str = f" | EGS T1:{n1} T2:{n2} T3:{n3} | {mix_tag}"
             else:
                 tier_str = (
@@ -957,6 +987,24 @@ def parse_args():
         help="EGS: max fraction of samples promoted per entropy update (default: 0.15, 0=unlimited)",
     )
     parser.add_argument(
+        "--egs_t2_entropy_thresh",
+        type=float,
+        default=None,
+        help="EGS: T2 promotion threshold as fraction of log(C); H < thresh*log(C) → promote to T2 (default: 0.40)",
+    )
+    parser.add_argument(
+        "--egs_t3_entropy_thresh",
+        type=float,
+        default=None,
+        help="EGS: T3 promotion threshold as fraction of log(C); H < thresh*log(C) → promote to T3 (default: 0.15)",
+    )
+    parser.add_argument(
+        "--egs_mix_ramp_epochs",
+        type=int,
+        default=None,
+        help="EGS: epochs to linearly ramp mixer.p after mixing first activates; 0=instant (default: 10)",
+    )
+    parser.add_argument(
         "--seed",
         type=int,
         default=None,
@@ -1046,6 +1094,9 @@ if __name__ == "__main__":
         "egs_mix_threshold",
         "egs_mix_min_epoch",
         "egs_max_promote_frac",
+        "egs_t2_entropy_thresh",
+        "egs_t3_entropy_thresh",
+        "egs_mix_ramp_epochs",
         "seed",
         "label_smoothing",
         "num_workers",
