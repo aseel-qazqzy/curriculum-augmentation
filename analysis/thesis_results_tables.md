@@ -32,7 +32,7 @@
 | Static Mixing | 77.79% | 76.82% | 77.69% | **77.43% ± 0.44%** | 138 min |
 | Tiered ETS | 81.35% | 81.25% | 81.35% | **81.32% ± 0.05%** | 136 min |
 | Tiered LPS | 81.36% | 81.43% | 81.27% | **81.35% ± 0.07%** | 135 min |
-| Tiered EGS | 79.50% | 🔶 pending | 🔶 pending | — | 288 min |
+| Tiered EGS | 79.50% | 79.70% | 79.57% | **79.59% ± 0.08%** | 279 min |
 
 > With 19 ops (incl. blur, invert, solarize, posterize): ETS/LPS outperform static by **+3.89pp**.
 > ETS and LPS are statistically identical (81.32% vs 81.35%, Δ = 0.03pp).
@@ -162,6 +162,8 @@
 | tiered_lps | 19 | cosine | 123 | 100 | 81.43% | 0.43% | 136 min |
 | tiered_lps | 19 | cosine | 456 | 100 | 81.27% | 0.79% | 135 min |
 | tiered_egs | 19 | cosine | 42 | 100 | 79.50% | 0.46% | 288 min |
+| tiered_egs | 19 | cosine | 123 | 100 | 79.70% | 0.50% | 290 min |
+| tiered_egs | 19 | cosine | 456 | 100 | 79.57% | 0.49% | 258 min |
 
 ---
 
@@ -184,5 +186,5 @@
 
 | Experiment | Seeds Remaining | Note |
 |:---|:---:|:---|
-| tiered_egs (19-op) | 123, 456 | Will complete Table 2 EGS row |
+| tiered_egs (19-op) | — | ✅ Complete — 79.59% ± 0.08% |
 | tiered_ets (14-op, 150ep) | 42 | Optional — 100ep s42 = 81.84% already strong |

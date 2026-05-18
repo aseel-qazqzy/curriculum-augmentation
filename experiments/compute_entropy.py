@@ -62,6 +62,7 @@ def build_raw_entropy_loader(
     val_split: float = 0.1,
     batch_size: int = 128,
     debug: bool = False,
+    num_workers: int = 4,
 ):
     """
     Build a DataLoader for entropy computation during EGS training.
@@ -94,7 +95,7 @@ def build_raw_entropy_loader(
         train_subset,
         batch_size=batch_size,
         shuffle=False,  # MUST be False — preserves index order
-        num_workers=4,
+        num_workers=num_workers,
         pin_memory=torch.cuda.is_available(),
     )
 
@@ -195,9 +196,6 @@ def assign_egs_difficulties(
     new_tier_advance_epoch = tier_advance_epoch.copy()
     new_tier_advance_epoch[will_advance] = epoch
 
-    tier_to_diff = {1: strength * 0.40, 2: strength * 0.70, 3: strength * 1.00}
-    difficulties = np.vectorize(tier_to_diff.get)(new_max_tier)
-
     n1 = int((new_max_tier == 1).sum())
     n2 = int((new_max_tier == 2).sum())
     n3 = int((new_max_tier == 3).sum())
@@ -211,7 +209,7 @@ def assign_egs_difficulties(
     return (
         new_max_tier,
         new_tier_advance_epoch,
-        torch.tensor(difficulties, dtype=torch.float32),
+        torch.tensor(new_max_tier, dtype=torch.long),  # tier integers 1/2/3
     )
 
 

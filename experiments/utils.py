@@ -71,6 +71,9 @@ def setup_logging(cfg: dict) -> _Tee:
 
 
 def set_seed(seed: int = 42):
+    import os
+
+    os.environ["CUBLAS_WORKSPACE_CONFIG"] = ":4096:8"
     random.seed(seed)
     np.random.seed(seed)
     torch.manual_seed(seed)

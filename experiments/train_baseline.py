@@ -90,6 +90,7 @@ def build_transforms(cfg: dict):
             curriculum_transform = CurriculumTransform(
                 dataset=dataset,
                 base_difficulty=0.0,
+                strength=cfg.get("fixed_strength", 0.7),
             )
             return curriculum_transform, curriculum_transform.get_val_transform()
 
@@ -196,17 +197,19 @@ def main(cfg: dict):
         is_lps = schedule == "lps"
         is_egs = schedule == "egs"
         if is_egs:
+            _t2_new = [op for op in _TIER_OPS[2] if op not in _TIER_OPS[1]]
+            _t3_new = [op for op in _TIER_OPS[3] if op not in _TIER_OPS[2]]
             print(
-                f"  Tier 1 (entropy-guided, per-sample): flip, crop, translate_x/y"
-                f"  |  difficulty {s1:.2f}"
+                f"  Tier 1 (entropy-guided, per-sample): {', '.join(_TIER_OPS[1])}"
+                f"  |  sample {_TIER_N_OPS[1]}/{len(_TIER_OPS[1])}  |  strength {s1:.2f}"
             )
             print(
-                f"  Tier 2 (entropy-guided, per-sample): +color_jitter, rotation, shear, auto_contrast, equalize, sharpness"
-                f"  |  difficulty {s2:.2f}"
+                f"  Tier 2 (entropy-guided, per-sample): +{', '.join(_t2_new)}"
+                f"  |  sample {_TIER_N_OPS[2]}/{len(_TIER_OPS[2])}  |  strength {s2:.2f}"
             )
             print(
-                f"  Tier 3 (entropy-guided, per-sample): +grayscale, cutout, contrast, brightness"
-                f"  |  difficulty {s3:.2f}"
+                f"  Tier 3 (entropy-guided, per-sample): +{', '.join(_t3_new)}"
+                f"  |  sample {_TIER_N_OPS[3]}/{len(_TIER_OPS[3])}  |  strength {s3:.2f}"
             )
             mix_mode = cfg.get("mix_mode", "both")
             if mix_mode != "none":
@@ -340,7 +343,7 @@ def main(cfg: dict):
         curriculum_dataset = CurriculumDataset(
             base_dataset=train_loader.dataset,  # raw Subset (no augmentation)
             transform=train_transform,  # CurriculumTransform
-            default_difficulty=0.28,  # everyone starts at Tier 1 strength
+            default_difficulty=1,  # everyone starts at Tier 1
         )
 
         max_tier_reached = np.ones(n_train, dtype=np.int32)
@@ -354,6 +357,7 @@ def main(cfg: dict):
             val_split=cfg["val_split"],
             batch_size=cfg["batch_size"],
             debug=cfg.get("debug", False),
+            num_workers=cfg.get("num_workers", 4),
         )
 
         def _collate_strip_idx(batch):

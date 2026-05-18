@@ -1,41 +1,64 @@
 """augmentations/curriculum.py — curriculum transform and dataset wrapper."""
 
+import random
+
 import torch
 import torchvision.transforms as T
 import torchvision.transforms.functional as TF
 from PIL import Image
 
-from augmentations.primitives import apply_augmentations, get_active_augmentations
 from data.datasets import CIFAR_STATS as STATS
 
 
 class CurriculumTransform:
-    """Augmentation transform that scales with a difficulty score [0, 1]."""
+    """Per-sample augmentation transform using _TIER_OPS pools.
 
-    def __init__(self, dataset: str = "cifar10", base_difficulty: float = 0.0):
+    Accepts a tier integer (1, 2, or 3) per sample and applies the same
+    op pool and random sampling as ThreeTierCurriculumTransform — ensuring
+    EGS uses identical augmentations to ETS/LPS.
+    """
+
+    def __init__(
+        self,
+        dataset: str = "cifar10",
+        base_difficulty: float = 0.0,
+        strength: float = 0.7,
+    ):
         self.dataset = dataset
         self.base_difficulty = base_difficulty
+        self.strength = strength
         self.mean = STATS[dataset]["mean"]
         self.std = STATS[dataset]["std"]
         self.normalize = T.Normalize(self.mean, self.std)
         self.to_tensor = T.ToTensor()
 
-    def __call__(self, img: Image.Image, difficulty: float = 0.5) -> torch.Tensor:
-        d = max(self.base_difficulty, difficulty)
-        img = apply_augmentations(img, difficulty=d)
+    def __call__(self, img: Image.Image, difficulty: int = 1) -> torch.Tensor:
+        from augmentations.policies import (
+            _TIER_OPS,
+            _TIER_N_OPS,
+            _TIER_STRENGTH_FRACS,
+        )
+        from augmentations.primitives import AUGMENTATION_REGISTRY
+
+        tier = int(difficulty)  # difficulty now carries tier integer (1/2/3)
+        tier = max(1, min(3, tier))
+
+        pool = _TIER_OPS[tier]
+        n = min(_TIER_N_OPS[tier], len(pool))
+        active = random.sample(pool, n)
+        op_strength = self.strength * _TIER_STRENGTH_FRACS[tier]
+
+        for name in active:
+            fn, _, _ = AUGMENTATION_REGISTRY[name]
+            img = fn(img, op_strength)
+
         return self.normalize(self.to_tensor(img))
 
     def get_val_transform(self):
         return T.Compose([T.ToTensor(), self.normalize])
 
-    def describe(self, difficulty: float) -> list:
-        return [name for name, _, _ in get_active_augmentations(difficulty)]
-
     def __repr__(self):
-        return (
-            f"CurriculumTransform(dataset={self.dataset}, "
-            f"base_difficulty={self.base_difficulty})"
-        )
+        return f"CurriculumTransform(dataset={self.dataset}, strength={self.strength})"
 
 
 class CurriculumDataset(torch.utils.data.Dataset):
@@ -49,14 +72,18 @@ class CurriculumDataset(torch.utils.data.Dataset):
     ):
         self.base_dataset = base_dataset
         self.transform = transform
-        self.difficulties = torch.full((len(base_dataset),), default_difficulty)
+        # Store tier integers (1/2/3); default_difficulty=0.0 → start all at Tier 1
+        self.difficulties = torch.ones(len(base_dataset), dtype=torch.long)
 
     def set_difficulties(self, difficulties: torch.Tensor):
         assert len(difficulties) == len(self.base_dataset)
-        self.difficulties = difficulties.clamp(0.0, 1.0)
+        self.difficulties = difficulties.clamp(1, 3).long()
 
     def set_global_difficulty(self, difficulty: float):
-        self.difficulties = torch.full((len(self.base_dataset),), difficulty)
+        tier = max(1, min(3, int(difficulty))) if difficulty > 0 else 1
+        self.difficulties = torch.full(
+            (len(self.base_dataset),), tier, dtype=torch.long
+        )
 
     def __len__(self):
         return len(self.base_dataset)

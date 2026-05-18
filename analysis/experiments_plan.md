@@ -32,7 +32,9 @@
 | Tiered LPS (14-op) | L | 3 | W | 14 | CIFAR-100 | ✅ |
 | Tiered LPS (19-op) | L | 3 | W | 19 | CIFAR-100 | ✅ |
 | Tiered EGS (14-op) | G | 3 | W | 14 | CIFAR-100 | ✅ |
-| Tiered EGS (19-op) | G | 3 | W | 19 | CIFAR-100 | 🔶 |
+| Tiered EGS (19-op, old code) | G | 3 | W | 19 | CIFAR-100 | ✅ 79.59% ± 0.08% |
+| Tiered EGS (19-op, _TIER_OPS fix) | G | 3 | W | 19 | CIFAR-100 | 📋 |
+| EGS opt Config 3 (old code, s42) | G | 1 | W | 19 | CIFAR-100 | ✅ 80.68% — still converging ep100 |
 | ETS 150 epochs (14-op) | E | 3 | W | 14 | CIFAR-100 | 🔶 |
 | **RandAugment N=2, M=9** ⚠️ MVT | — | 1 | W | — | CIFAR-100 | 📋 |
 | **Random Aug (same pool, no ordering)** ⚠️ MVT | — | 1 | W | 19 | CIFAR-100 | 📋 |
