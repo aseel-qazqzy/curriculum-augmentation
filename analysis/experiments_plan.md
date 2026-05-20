@@ -161,8 +161,8 @@
 
 | Experiment | Apply | Seeds | Arch | Pool | Dataset | Status |
 |:---|:---:|:---:|:---:|:---:|:---:|:---:|
-| min_epochs_per_tier = 10 | G | 1 | W | 19 | CIFAR-100 | 📋 |
-| min_epochs_per_tier = 20 *(default)* | G | 3 | W | 19 | CIFAR-100 | ✅ |
+| min_epochs_per_tier = 10 *(default)* | G | 3 | W | 19 | CIFAR-100 | ✅ (v2) |
+| min_epochs_per_tier = 20 *(old default)* | G | 3 | W | 19 | CIFAR-100 | ✅ 79.59% |
 | max_promote_frac = 0.25 *(faster advancement)* | G | 1 | W | 19 | CIFAR-100 | 📋 |
 | update_freq = 10 *(less frequent)* | G | 1 | W | 19 | CIFAR-100 | 📋 |
 
@@ -172,6 +172,29 @@
 --egs_min_epochs_per_tier 10
 --egs_max_promote_frac 0.25
 --egs_update_freq 10
+```
+
+---
+
+## Group G2 — EGS v2/v3 Tuning Runs *(seed 42 only — find best config, then 3-seed sweep)*
+
+> See `thesis_results_tables.md` Table 10 for full tuning log.
+
+| Version | T3 thresh | mix_alpha | Seeds | Test Top-1 | Status |
+|:---|:---:|:---:|:---:|:---:|:---:|
+| v2 — fixed thresholds, soft mix (α=0.2) | 0.15 | 0.2 | 1 | 79.83% | ✅ s42 done |
+| v3 — raised T3 thresh (0.25), stronger mix (α=0.4) | 0.25 | 0.4 | 1 | 📋 | 📋 running |
+| Best config — 3-seed sweep | TBD | TBD | 3 | 📋 | 📋 after v3 |
+
+```bash
+# v3 command
+python -m experiments.train_baseline --dataset cifar100 --model wideresnet \
+  --augmentation tiered_curriculum --tier_schedule egs --epochs 100 \
+  --scheduler cosine --warmup_epochs 5 --lr 0.1 \
+  --egs_update_freq 3 --egs_min_epochs_per_tier 10 --egs_max_epochs_per_tier 25 \
+  --egs_max_promote_frac 0.10 --egs_mix_threshold 0.50 --egs_mix_min_epoch 40 \
+  --egs_t3_entropy_thresh 0.25 --mix_alpha 0.4 --label_smoothing 0.1 \
+  --use_amp --seed 42 --experiment_name egs_v3_100ep_s42
 ```
 
 ---

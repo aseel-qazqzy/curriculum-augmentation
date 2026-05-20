@@ -188,3 +188,20 @@
 |:---|:---:|:---|
 | tiered_egs (19-op) | — | ✅ Complete — 79.59% ± 0.08% |
 | tiered_ets (14-op, 150ep) | 42 | Optional — 100ep s42 = 81.84% already strong |
+
+---
+
+## Table 10 — EGS Hyperparameter Tuning Log (WideResNet-28-10 · CIFAR-100 · 19-op · 100ep · Seed 42)
+
+> Tuning runs use seed 42 only. Full 3-seed sweep only on the best config.
+> Baseline for comparison: old EGS (broken) = 79.59% ± 0.08% | ETS = 81.32% ± 0.05%
+
+| Version | T3 thresh | mix_alpha | mix_min_ep | promote_frac | label_smooth | Test Top-1 | Train Acc | T3@ep50 | Time |
+|:---|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|
+| old EGS (broken, thresh=0.30) | 0.30 | 1.0 | 30 | 0.15 | 0.0 | 79.50% | 40% collapse | 32% | 288 min |
+| **v2** (fixed thresholds, soft mix) | 0.15 | 0.2 | 45 | 0.10 | 0.1 | **79.83%** | 69.77% | 50% | 252 min |
+| **v3** (raise T3 thresh + alpha) | 0.25 | 0.4 | 40 | 0.10 | 0.1 | 📋 pending | — | — | — |
+
+> T2 entropy threshold fixed at 0.40 across all v2+ runs.
+> T3@ep50 = fraction of samples in Tier 3 at epoch 50 — proxy for how early full augmentation kicks in.
+> v2 key finding: no training collapse (train acc 69.77% vs 40% collapse), but only 10 epochs of full T3.

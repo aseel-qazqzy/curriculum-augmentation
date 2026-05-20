@@ -163,18 +163,14 @@ def assign_egs_difficulties(
 
     # Max-time bump: samples stuck too long get bumped one tier regardless of entropy.
     # This is per-sample — only genuinely stuck samples are affected.
+    force_bump_mask = np.zeros(len(entropy_scores), dtype=bool)
     if egs_max_epochs_per_tier > 0:
         stuck = (time_in_tier >= egs_max_epochs_per_tier) & (max_tier_reached < 3)
         stuck_and_not_advancing = stuck & (candidate_tiers <= max_tier_reached)
         candidate_tiers[stuck_and_not_advancing] = np.minimum(
             max_tier_reached[stuck_and_not_advancing] + 1, 3
         )
-        n_bumped = int(stuck_and_not_advancing.sum())
-        if n_bumped > 0:
-            print(
-                f"  EGS max-time bump: {n_bumped:,} samples force-promoted "
-                f"(>{egs_max_epochs_per_tier} epochs in tier)"
-            )
+        force_bump_mask = stuck_and_not_advancing
 
     # Sequential gate: a sample can only advance one tier per update (T1→T2→T3)
     # prevents samples from skipping T2 entirely when entropy drops fast
@@ -196,6 +192,14 @@ def assign_egs_difficulties(
             ranked = eligible_idx[np.argsort(entropy_scores[eligible_idx])]
             will_advance = np.zeros_like(will_advance)
             will_advance[ranked[:max_promote]] = True
+
+    # Report actual force-bumps that made it through the cap
+    n_force_promoted = int((will_advance & force_bump_mask).sum())
+    if n_force_promoted > 0:
+        print(
+            f"  EGS max-time bump: {n_force_promoted:,} samples actually force-promoted "
+            f"(>{egs_max_epochs_per_tier} epochs in tier)"
+        )
 
     # Monotonic update
     new_max_tier = max_tier_reached.copy()
