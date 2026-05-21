@@ -75,11 +75,11 @@
 
 | Experiment | Apply | Seeds | Arch | Pool | Dataset | Status |
 |:---|:---:|:---:|:---:|:---:|:---:|:---:|
-| **ETS — No mixing** ⚠️ MVT | E | 1 | W | 19 | CIFAR-100 | 📋 |
-| ETS — CutMix only | E | 1 | W | 19 | CIFAR-100 | 📋 |
-| ETS — MixUp only | E | 1 | W | 19 | CIFAR-100 | 📋 |
+| **ETS — No mixing** ⚠️ MVT | E | 1 | W | 19 | CIFAR-100 | ✅ 79.29% s42 · 137 min |
+| ETS — CutMix only | E | 1 | W | 19 | CIFAR-100 | ✅ 81.74% s42 · 137 min |
+| ETS — MixUp only | E | 1 | W | 19 | CIFAR-100 | ✅ 80.45% s42 · 137 min |
 | ETS — Both CutMix + MixUp *(current)* | E | 3 | W | 19 | CIFAR-100 | ✅ |
-| Static — No mixing | — | 1 | W | 19 | CIFAR-100 | 📋 |
+| Static — No mixing | — | 1 | W | 19 | CIFAR-100 | ✅ 78.23% s42 · 139 min |
 
 **Answers:** Is the accuracy gain driven by the curriculum ordering of ops, or simply by the delayed introduction of CutMix/MixUp? Which mixing strategy contributes more?
 
@@ -223,10 +223,11 @@ python -m experiments.train_baseline --dataset cifar100 --model wideresnet \
 
 | Experiment | Apply | Seeds | Arch | Pool | Dataset | Status |
 |:---|:---:|:---:|:---:|:---:|:---:|:---:|
-| No Augmentation | — | 1 | R | — | CIFAR-100 | 📋 |
-| Static Mixing | — | 1 | R | 19 | CIFAR-100 | 📋 |
-| Tiered ETS | E | 1 | R | 19 | CIFAR-100 | 📋 |
-| Tiered LPS | L | 1 | R | 19 | CIFAR-100 | 📋 |
+| No Augmentation | — | 1 | R | — | CIFAR-100 | ✅ 65.30% s42 · 67 min |
+| Static Mixing | — | 1 | R | 19 | CIFAR-100 | ✅ 76.62% s42 · 69 min |
+| Tiered EGS v2 | G | 1 | R | 19 | CIFAR-100 | ✅ 79.10% s42 · 151 min |
+| Tiered ETS | E | 1 | R | 19 | CIFAR-100 | ✅ 80.41% s42 · 68 min |
+| Tiered LPS | L | 1 | R | 19 | CIFAR-100 | ✅ 80.50% s42 · T1→T2 ep23 · T2→T3 ep36 · 68 min |
 
 **Answers:** Is the curriculum benefit specific to WideResNet or does it generalise across architectures? Do larger capacity models benefit more or less from progressive augmentation?
 
