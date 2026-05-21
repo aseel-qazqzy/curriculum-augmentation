@@ -98,7 +98,7 @@
 
 | Experiment | Apply | Seeds | Arch | Pool | Dataset | Status |
 |:---|:---:|:---:|:---:|:---:|:---:|:---:|
-| **Reverse: Hard → Medium → Easy** ⭐ FIT Q105 | E | 1 | W | 19 | CIFAR-100 | 📋 |
+| **Reverse: Hard → Medium → Easy** ⭐ FIT Q105 | E | 1 | W | 19 | CIFAR-100 | ✅ 78.17% s42 |
 | **Hard from epoch 1 (t1=0, t2=0)** ⚠️ MVT | E | 1 | W | 19 | CIFAR-100 | 📋 |
 | T1 + T3 only (skip T2) | E | 1 | W | 19 | CIFAR-100 | 📋 |
 | T2 only (photometric ops, all 100 epochs) | E | 1 | W | 19 | CIFAR-100 | 📋 |
@@ -182,9 +182,8 @@
 
 | Version | T3 thresh | mix_alpha | Seeds | Test Top-1 | Status |
 |:---|:---:|:---:|:---:|:---:|:---:|
-| v2 — fixed thresholds, soft mix (α=0.2) | 0.15 | 0.2 | 3 | s42=79.83% · s123=80.39% · s456=📋 | 🔶 s456 running |
+| v2 — fixed thresholds, soft mix (α=0.2) | 0.15 | 0.2 | 3 | s42=79.83% · s123=80.39% · s456=79.81% → **80.01% ± 0.27%** | ✅ complete |
 | v3 — raised T3 thresh (0.25), stronger mix (α=0.4) | 0.25 | 0.4 | 1 | 79.62% | ✅ worse than v2 |
-| Best config (v2) — 3-seed sweep | 0.15 | 0.2 | 3 | mean pending s456 | 🔶 |
 
 ```bash
 # v3 command
