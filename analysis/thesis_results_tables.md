@@ -164,6 +164,9 @@
 | tiered_egs | 19 | cosine | 42 | 100 | 79.50% | 0.46% | 288 min |
 | tiered_egs | 19 | cosine | 123 | 100 | 79.70% | 0.50% | 290 min |
 | tiered_egs | 19 | cosine | 456 | 100 | 79.57% | 0.49% | 258 min |
+| tiered_egs_v2 | 19 | cosine | 42 | 100 | 79.83% | 0.47% | 252 min |
+| tiered_egs_v2 | 19 | cosine | 123 | 100 | **80.39%** | 0.29% | 264 min |
+| tiered_egs_v2 | 19 | cosine | 456 | 100 | — | — | — |
 
 ---
 
@@ -199,8 +202,8 @@
 | Version | T3 thresh | mix_alpha | mix_min_ep | promote_frac | label_smooth | Test Top-1 | Train Acc | T3@ep50 | Time |
 |:---|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|
 | old EGS (broken, thresh=0.30) | 0.30 | 1.0 | 30 | 0.15 | 0.0 | 79.50% | 40% collapse | 32% | 288 min |
-| **v2** (fixed thresholds, soft mix) | 0.15 | 0.2 | 45 | 0.10 | 0.1 | **79.83%** | 69.77% | 50% | 252 min |
-| **v3** (raise T3 thresh + alpha) | 0.25 | 0.4 | 40 | 0.10 | 0.1 | 📋 pending | — | — | — |
+| **v2** (fixed thresholds, soft mix) | 0.15 | 0.2 | 45 | 0.10 | 0.1 | 79.83% / **80.39%** / — | 69.77% | 50% | 252–264 min |
+| **v3** (raise T3 thresh + alpha) | 0.25 | 0.4 | 40 | 0.10 | 0.1 | 79.62% (s42 only) | 67.48% | 51% | 273 min |
 
 > T2 entropy threshold fixed at 0.40 across all v2+ runs.
 > T3@ep50 = fraction of samples in Tier 3 at epoch 50 — proxy for how early full augmentation kicks in.

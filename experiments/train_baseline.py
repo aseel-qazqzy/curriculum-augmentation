@@ -104,6 +104,7 @@ def build_transforms(cfg: dict):
             strength=cfg.get("fixed_strength", 0.7),
             op_ranking_file=cfg.get("op_ranking_file"),
             op_pool=cfg.get("op_pool", 19),
+            reverse=cfg.get("reverse_curriculum", False),
         )
         return policy.get_train_transform(), policy.get_val_transform()
 
@@ -232,19 +233,29 @@ def main(cfg: dict):
             t1_str = "loss-guided" if is_lps else f"ep   1-{t1:2d}"
             t2_str = "loss-guided" if is_lps else f"ep {t1 + 1:2d}-{t2:2d}"
             t3_str = "loss-guided" if is_lps else f"ep {t2 + 1:2d}-end"
-            _t2_new = [op for op in _TIER_OPS[2] if op not in _TIER_OPS[1]]
-            _t3_new = [op for op in _TIER_OPS[3] if op not in _TIER_OPS[2]]
+            is_rev = cfg.get("reverse_curriculum", False)
+            _ops, _nops = (
+                (
+                    {1: _TIER_OPS[3], 2: _TIER_OPS[2], 3: _TIER_OPS[1]},
+                    {1: _TIER_N_OPS[3], 2: _TIER_N_OPS[2], 3: _TIER_N_OPS[1]},
+                )
+                if is_rev
+                else (_TIER_OPS, _TIER_N_OPS)
+            )
+            _t2_new = [op for op in _ops[2] if op not in _ops[1]]
+            _t3_new = [op for op in _ops[3] if op not in _ops[2]]
+            rev_tag = "  [REVERSE]" if is_rev else ""
             print(
-                f"  Tier 1 ({t1_str}): {', '.join(_TIER_OPS[1])}"
-                f"  |  sample {_TIER_N_OPS[1]}/{len(_TIER_OPS[1])}  |  strength {s1:.2f}"
+                f"  Tier 1 ({t1_str}){rev_tag}: {', '.join(_ops[1])}"
+                f"  |  sample {_nops[1]}/{len(_ops[1])}  |  strength {s1:.2f}"
             )
             print(
                 f"  Tier 2 ({t2_str}): +{', '.join(_t2_new)}"
-                f"  |  sample {_TIER_N_OPS[2]}/{len(_TIER_OPS[2])}  |  strength {s2:.2f} (ramp {_STRENGTH_RAMP_EPOCHS} ep)"
+                f"  |  sample {_nops[2]}/{len(_ops[2])}  |  strength {s2:.2f} (ramp {_STRENGTH_RAMP_EPOCHS} ep)"
             )
             print(
                 f"  Tier 3 ({t3_str}): +{', '.join(_t3_new)}"
-                f"  |  sample {_TIER_N_OPS[3]}/{len(_TIER_OPS[3])}  |  strength {s3:.2f} (ramp {_STRENGTH_RAMP_EPOCHS} ep)"
+                f"  |  sample {_nops[3]}/{len(_ops[3])}  |  strength {s3:.2f} (ramp {_STRENGTH_RAMP_EPOCHS} ep)"
             )
             mix_mode = cfg.get("mix_mode", "both")
             if mix_mode != "none":
@@ -908,6 +919,12 @@ def parse_args():
         help="Enable automatic mixed precision (CUDA only)",
     )
     parser.add_argument(
+        "--reverse_curriculum",
+        action="store_true",
+        default=False,
+        help="Reverse tier order: start with all hard ops (T1=19 ops) and reduce to easy (T3=4 ops)",
+    )
+    parser.add_argument(
         "--mix_mode",
         type=str,
         default=None,
@@ -1109,6 +1126,9 @@ if __name__ == "__main__":
         val = getattr(args, key, None)
         if val is not None:
             cfg[key] = val
+
+    if args.reverse_curriculum:
+        cfg["reverse_curriculum"] = True
 
     if args.debug:
         cfg["debug"] = True

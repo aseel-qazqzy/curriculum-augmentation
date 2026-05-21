@@ -100,6 +100,9 @@ def get_tier_ops(op_pool: int = 19) -> tuple[dict, dict]:
 # Tier 3 always equals the ceiling; lower tiers scale down proportionally.
 _TIER_STRENGTH_FRACS = {1: 0.40, 2: 0.70, 3: 1.0}
 
+# Reverse curriculum: T1 starts at full strength, T3 ends at the lowest.
+_TIER_STRENGTH_FRACS_REVERSE = {1: 1.0, 2: 0.70, 3: 0.40}
+
 _STRENGTH_RAMP_EPOCHS = 5  # epochs to linearly ramp strength at each tier boundary
 
 
@@ -224,6 +227,7 @@ class ThreeTierCurriculumTransform:
         strength: float = FIXED_STRENGTH,
         op_ranking_file: str | None = None,
         op_pool: int = 19,
+        reverse: bool = False,
     ):
         mean = STATS[dataset]["mean"]
         std = STATS[dataset]["std"]
@@ -232,9 +236,12 @@ class ThreeTierCurriculumTransform:
         self.t1 = t1
         self.t2 = t2
         self.epoch = 1
-        self.strength = strength  # ceiling — reached at Tier 3
+        self.strength = (
+            strength  # ceiling — reached at Tier 3 (forward) or Tier 1 (reverse)
+        )
         self._forced_tier = None  # set by loss/entropy schedulers; None = time-based
         self._tier_start_epoch: dict[int, int] = {}
+        self._reverse = reverse
         if op_ranking_file:
             self._tier_ops, self._op_strengths = _load_tier_ops(op_ranking_file)
             self._n_ops = _TIER_N_OPS  # ranked pool always uses 19-op sample counts
@@ -243,6 +250,21 @@ class ThreeTierCurriculumTransform:
             self._tier_ops, self._n_ops = get_tier_ops(op_pool)
             self._op_strengths: dict[str, float] = {}
             self._op_ranking = "manual"
+        if reverse:
+            # Swap T1 ↔ T3 pools and sample counts; T2 is symmetric so it stays.
+            self._tier_ops = {
+                1: self._tier_ops[3],
+                2: self._tier_ops[2],
+                3: self._tier_ops[1],
+            }
+            self._n_ops = {
+                1: self._n_ops[3],
+                2: self._n_ops[2],
+                3: self._n_ops[1],
+            }
+            self._strength_fracs = _TIER_STRENGTH_FRACS_REVERSE
+        else:
+            self._strength_fracs = _TIER_STRENGTH_FRACS
 
     def set_epoch(self, epoch: int) -> None:
         self.epoch = epoch
@@ -272,7 +294,7 @@ class ThreeTierCurriculumTransform:
     def tier_label(self) -> str:
         t = self.tier()
         pool = self._tier_ops[t]
-        n_sample = min(_TIER_N_OPS[t], len(pool))
+        n_sample = min(self._n_ops[t], len(pool))
         if t == 1:
             return f"Tier 1 [{', '.join(pool)}]  {n_sample}/{len(pool)} ops"
         prev_pool = self._tier_ops[t - 1]
@@ -280,7 +302,7 @@ class ThreeTierCurriculumTransform:
         return f"Tier {t} [+{', '.join(new_ops)}]  {n_sample}/{len(pool)} ops"
 
     def _tier_strength(self, tier: int) -> float:
-        return self.strength * _TIER_STRENGTH_FRACS[tier]
+        return self.strength * self._strength_fracs[tier]
 
     def _current_strength(self) -> float:
         """Linearly ramp strength over _STRENGTH_RAMP_EPOCHS after a tier boundary.
@@ -355,6 +377,7 @@ class ThreeTierCurriculumAugmentation(AugmentationPolicy):
         strength: float = FIXED_STRENGTH,
         op_ranking_file: str | None = None,
         op_pool: int = 19,
+        reverse: bool = False,
     ):
         super().__init__(dataset=dataset)
         self.t1 = t1
@@ -362,6 +385,7 @@ class ThreeTierCurriculumAugmentation(AugmentationPolicy):
         self.strength = strength
         self.op_ranking_file = op_ranking_file
         self.op_pool = op_pool
+        self.reverse = reverse
 
     def get_train_transform(self) -> ThreeTierCurriculumTransform:
         return ThreeTierCurriculumTransform(
@@ -371,6 +395,7 @@ class ThreeTierCurriculumAugmentation(AugmentationPolicy):
             strength=self.strength,
             op_ranking_file=self.op_ranking_file,
             op_pool=self.op_pool,
+            reverse=self.reverse,
         )
 
 

@@ -182,9 +182,9 @@
 
 | Version | T3 thresh | mix_alpha | Seeds | Test Top-1 | Status |
 |:---|:---:|:---:|:---:|:---:|:---:|
-| v2 — fixed thresholds, soft mix (α=0.2) | 0.15 | 0.2 | 1 | 79.83% | ✅ s42 done |
-| v3 — raised T3 thresh (0.25), stronger mix (α=0.4) | 0.25 | 0.4 | 1 | 📋 | 📋 running |
-| Best config — 3-seed sweep | TBD | TBD | 3 | 📋 | 📋 after v3 |
+| v2 — fixed thresholds, soft mix (α=0.2) | 0.15 | 0.2 | 3 | s42=79.83% · s123=80.39% · s456=📋 | 🔶 s456 running |
+| v3 — raised T3 thresh (0.25), stronger mix (α=0.4) | 0.25 | 0.4 | 1 | 79.62% | ✅ worse than v2 |
+| Best config (v2) — 3-seed sweep | 0.15 | 0.2 | 3 | mean pending s456 | 🔶 |
 
 ```bash
 # v3 command
