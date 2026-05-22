@@ -225,27 +225,4 @@ python -m experiments.train_baseline --dataset cifar100 --model wideresnet \
 
 Auto-built name pattern: `{model}_{aug}_{optimizer}_{scheduler}_ep{N}_{dataset}_s{seed}_p{pool}`
 
----
-
-## Changelog
-
-### 2026-05-22
-- **augmentations/clip_scorer.py** — new: CLIPDifficultyScorer using frozen CLIP ViT-B/32; scores 1 − cosine_similarity per image pair
-- **augmentations/clip_calibration.py** — new: offline script scoring all 19 ops + CutMix/MixUp; saves `configs/aug_difficulty_scores_{dataset}.pt`
-- **augmentations/plot_clip_scores.py** — new: publication-quality bar chart grouped by tier with colorblind-safe palette; saves to `results/figs/clip_validation/`
-- **analysis/**: add `thesis_writing.md` (ready-to-use thesis paragraphs) and `related_works.md` (survey of 8 related papers)
-
-### 2026-05-21
-- **augmentations/policies.py** — add `--reverse_curriculum` flag; reverse curriculum (Hard→Easy) validated: 78.17% (−3.18pp vs ETS)
-- **experiments/train_baseline.py** — add `--reverse_curriculum` CLI arg; wire through `build_transforms`
-- **experiments/compute_entropy.py** — fix misleading force-promotion print; now reports actual promoted count after cap
-- **Mixing ablation complete** — CutMix alone (81.74%) > Both (81.35%) > MixUp alone (80.45%) > No mix (79.29%); curriculum amplifies CutMix benefit (+2.45pp vs −0.80pp for static)
-
-### 2026-05-20
-- **EGS v2** — fix training collapse (was 40% train acc); tighten entropy thresholds, add 10-ep mixing ramp, label_smoothing=0.1; result: 80.01% ± 0.27%
-- **experiments/config.py** — add `egs_t2_entropy_thresh=0.40`, `egs_t3_entropy_thresh=0.15`, `egs_mix_ramp_epochs=10`
-- **ResNet-50 architecture comparison complete** — ETS: 80.41%, LPS: 80.50% (+3.79/+3.88pp vs static); gap vs WideResNet narrows from 7.56pp (no-aug) to 0.85pp (curriculum)
-
-### 2026-05-15
-- **augmentations/policies.py** — `tier_label()` derives op names/sizes from `_tier_ops` at runtime; tier activation printed immediately when ETS crosses boundary
 - **Scheduler ablation** — cosine_wr collapsed 27.88pp at epoch 50 due to LR restart coinciding with Tier 3 activation; cosine_wr ruled out
