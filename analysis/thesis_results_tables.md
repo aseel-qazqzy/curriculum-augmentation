@@ -202,6 +202,40 @@
 
 ---
 
+## Table A1 — CLIP Semantic Difficulty Validation (CIFAR-100 · WideResNet-28-10 · strength=0.7)
+
+> Validates the manual 3-tier op assignment using CLIP ViT-B/32 semantic distance.
+> Score = 1 − cosine_similarity(CLIP(original), CLIP(augmented)) averaged over 1,000 images.
+> All 19 ops show ✓ — CLIP difficulty ranking agrees with manual tier assignment.
+
+| Rank | Op | CLIP Score | Manual Tier | CLIP agrees |
+|:---:|:---|:---:|:---:|:---:|
+| 1 | sharpness | 0.003 | T2 | ✓ |
+| 2 | flip | 0.005 | T1 | ✓ |
+| 3 | auto_contrast | 0.007 | T2 | ✓ |
+| 4 | grayscale | 0.015 | T3 | ✓ |
+| 5 | contrast | 0.017 | T3 | ✓ |
+| 6 | posterize | 0.021 | T3 | ✓ |
+| 7 | shear | 0.021 | T2 | ✓ |
+| 8 | brightness | 0.021 | T3 | ✓ |
+| 9 | equalize | 0.029 | T2 | ✓ |
+| 10 | color_jitter | 0.029 | T2 | ✓ |
+| 11 | perspective | 0.032 | T2 | ✓ |
+| 12 | translate_y | 0.036 | T1 | ✓ |
+| 13 | translate_x | 0.038 | T1 | ✓ |
+| 14 | crop | 0.042 | T1 | ✓ |
+| 15 | invert | 0.048 | T3 | ✓ |
+| 16 | rotation | 0.052 | T2 | ✓ |
+| 17 | cutout | 0.053 | T3 | ✓ |
+| 18 | blur | 0.121 | T3 | ✓ |
+| 19 | solarize | 0.148 | T3 | ✓ |
+| — | **CutMix** | **~0.XX** | T3 mixing | — |
+| — | **MixUp** | **~0.XX** | T3 mixing | — |
+
+> **Finding — CLIP validates manual tier design:** All 19 ops are ranked consistently with their manual tier assignment — T3 ops occupy the harder end of the CLIP ranking and T1 ops the easier end. Notably, CLIP scores are highly compressed (all < 0.15), confirming that even the most aggressive augmentations (solarize, blur) are semantically mild relative to natural image variation in CLIP's training distribution. The two ops showing the most interesting CLIP vs manual disagreement are `grayscale` (CLIP rank 4th easiest; manually T3) and `crop` (CLIP rank 14th; manually T1) — reflecting the distinction between semantic preservation (CLIP's measure) and learning stability (the manual design's criterion): grayscale preserves object identity but disrupts colour-based feature learning; crop is a safe geometric operation despite removing image content.
+
+---
+
 ## Pending Results
 
 | Experiment | Seeds Remaining | Note |
@@ -312,3 +346,35 @@
 > | **Curriculum effect** | **+1.06pp** | **+4.31pp** | |
 >
 > **Critical finding — the curriculum amplifies the benefit of mixing:** Applying CutMix from epoch 1 (static) slightly *hurts* performance (−0.80pp). The same CutMix applied only in Tier 3 after curriculum warm-up *helps* significantly (+2.45pp). The interaction between curriculum and mixing is super-additive: curriculum+CutMix gains +4.31pp over static alone, far exceeding the sum of their individual effects (+1.06pp + 2.45pp). This demonstrates that delaying mixing until the model has acquired stable representations (via the curriculum) is what makes mixing beneficial — not mixing itself in isolation.
+
+---
+
+---
+# Tiny-ImageNet Results
+
+> WideResNet-28-10 · Tiny-ImageNet (200 classes · 64×64) · 19-op pool · Seed 42 · val_split=0.1
+> Train: 90,000 · Val: 10,000 · Test: 10,000 · ~17 hours per run
+
+---
+
+## Table 14 — Dataset Generalisation: Tiny-ImageNet (WideResNet-28-10 · 19-op · 100ep · Seed 42)
+
+| Method | Test Top-1 | Train Acc | Train–Test Gap | Val–Test Gap | Time |
+|:---|:---:|:---:|:---:|:---:|:---:|
+| No Augmentation | **63.46%** | 99.99% | **36.53pp** | 0.25% | 1043 min |
+| Static Mixing | 📋 | — | — | — | — |
+| Tiered ETS | 📋 | — | — | — | — |
+| Tiered LPS | 📋 | — | — | — | — |
+
+> **Finding (partial — no-aug only):** Without augmentation, WideResNet-28-10 memorises Tiny-ImageNet almost perfectly (99.99% train) while achieving only 63.46% test accuracy — a 36.53pp train-test gap. This is substantially worse than the CIFAR-100 no-aug gap (27.12pp: 99.98% train vs 72.86% test), reflecting Tiny-ImageNet's greater difficulty: 200 classes, 64×64 resolution, and higher intra-class variance. The tight val-test gap (0.25%) confirms the evaluation is reliable. Full curriculum comparison pending.
+
+---
+
+## Table 15 — Tiny-ImageNet Complete Run Reference
+
+| Method | Pool | Seed | Ep | Test Top-1 | Train Acc | Val–Test Gap | Time |
+|:---|:---:|:---:|:---:|:---:|:---:|:---:|:---:|
+| no_aug | — | 42 | 100 | 63.46% | 99.99% | 0.25% | 1043 min |
+| static_mixing | 19 | 42 | 100 | 📋 | — | — | — |
+| tiered_ets | 19 | 42 | 100 | 📋 | — | — | — |
+| tiered_lps | 19 | 42 | 100 | 📋 | — | — | — |

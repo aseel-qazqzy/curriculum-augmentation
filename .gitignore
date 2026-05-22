@@ -3,7 +3,6 @@
 *.md
 !README.md
 !analysis/thesis_results_tables.md
-!analysis/experiments_plan.md
 !analysis/thesis_writing.md
 !analysis/related_works.md
 CHANGELOG.md
@@ -59,3 +58,6 @@ augmentations/sota/
 results/
 checkpoints/
 *.log
+
+# CLIP calibration outputs (generated offline, not committed)
+configs/aug_difficulty_scores_*.pt

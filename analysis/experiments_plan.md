@@ -204,7 +204,7 @@ python -m experiments.train_baseline --dataset cifar100 --model wideresnet \
 
 | Experiment | Apply | Seeds | Arch | Pool | Dataset | Status |
 |:---|:---:|:---:|:---:|:---:|:---:|:---:|
-| No Augmentation | — | 1 | W | — | Tiny-ImageNet | 📋 |
+| No Augmentation | — | 1 | W | — | Tiny-ImageNet | ✅ 63.46% s42 · 1043 min |
 | Static Mixing | — | 1 | W | 19 | Tiny-ImageNet | 📋 |
 | Tiered ETS | E | 1 | W | 19 | Tiny-ImageNet | 📋 |
 | Tiered LPS | L | 1 | W | 19 | Tiny-ImageNet | 📋 |
