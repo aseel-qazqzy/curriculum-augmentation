@@ -17,34 +17,42 @@ Three scheduling mechanisms are compared for advancing curriculum tiers, alongsi
 ```
 curriculum-augmentation/
 ├── augmentations/
-│   ├── primitives.py          — low-level op implementations (flip, crop, color_jitter, cutout, etc.)
+│   ├── primitives.py          — low-level op implementations (flip, crop, color_jitter, cutout …)
 │   ├── policies.py            — NoAug, Static, StaticMixing, RandAugment, ThreeTierCurriculumAugmentation
 │   ├── mixing.py              — BatchMixer: CutMix + MixUp (Tier 3 only)
 │   ├── curriculum.py          — CurriculumDataset (index-aware dataset wrapper for EGS)
-│   └── schedules.py           — tier strength ramp helpers
+│   ├── schedules.py           — tier strength ramp helpers
+│   ├── clip_scorer.py         — CLIPDifficultyScorer: frozen CLIP ViT-B/32 semantic distance
+│   ├── clip_calibration.py    — offline script: score all 19 ops + mixing with CLIP
+│   └── plot_clip_scores.py    — publication bar chart of CLIP scores grouped by tier
 ├── data/
-│   └── datasets.py            — CIFAR-10/100 and Tiny ImageNet loaders
+│   └── datasets.py            — CIFAR-10/100 and Tiny-ImageNet loaders
 ├── experiments/
 │   ├── train_baseline.py      — main entry point for all runs (baseline + curriculum)
 │   ├── config.py              — BASE_CONFIG shared across all scripts
 │   ├── utils.py               — set_seed, get_device, build_optimizer, build_scheduler
-│   ├── rank_aug_ops.py        — rank ops by val-loss delta; produces aug_op_ranking.json
-│   └── compute_entropy.py     — per-sample entropy scoring for EGS
+│   ├── compute_entropy.py     — per-sample entropy scoring for EGS
+│   └── rank_aug_ops.py        — rank ops by val-loss delta; produces aug_op_ranking.json
 ├── training/
 │   ├── trainer.py             — train_one_epoch, evaluate, compute_training_entropy
-│   └── losses.py              — LabelSmoothingLoss, LossPlateauScheduler
+│   └── losses.py              — LabelSmoothingLoss, LossPlateauScheduler, EntropyPlateauScheduler
 ├── models/
 │   └── registry.py            — get_model factory (ResNet-18/50, WideResNet-28-10, PyramidNet)
 ├── analysis/
-│   ├── plot_curves.py         — validation accuracy and loss curves
-│   ├── compare_methods.py     — summary table and bar chart across methods/seeds
-│   ├── visualize_schedule.py  — augmentation schedule visualiser
-│   └── wideresnet_cifar100/   — per-run analysis markdown files
+│   ├── thesis_results_tables.md  — all experimental results with scientific findings
+│   ├── thesis_writing.md         — ready-to-use thesis paragraphs per result section
+│   └── related_works.md          — related paper survey with thesis positioning
+├── configs/                   — pre-baked YAML configs (aug_difficulty_scores_*.pt generated here)
 ├── scripts/
 │   └── run_cluster.sh         — SLURM submission script for university cluster
 ├── results/
 │   ├── logs/                  — per-run training logs
-│   └── figures/               — exported figures
+│   └── figs/                  — exported figures
+│       ├── clip_validation/   — CLIP difficulty bar charts
+│       ├── training_curves/   — val acc / loss curves
+│       ├── ablation/          — mixing, reverse curriculum, etc.
+│       ├── architecture/      — ResNet-50 vs WideResNet
+│       └── dataset/           — Tiny-ImageNet results
 └── checkpoints/               — saved model weights and training histories
 ```
 
@@ -61,166 +69,183 @@ curriculum-augmentation/
 | 3 | + grayscale, cutout, contrast, brightness, blur, solarize, posterize, invert | 8 of 19 | 0.70 (ramp 5 ep) | 46–100 |
 
 - Strength ceiling: `fixed_strength=0.7`. Tiers 1 and 2 scale to 40% and 70% of ceiling.
-- Tier 3 adds **CutMix + MixUp** batch mixing (`mix_mode=both`, alpha=1.0, p=0.5).
+- Tier 3 adds **CutMix** batch mixing (`mix_mode=cutmix`, alpha=1.0, p=0.5) — CutMix alone outperforms CutMix+MixUp combined (+0.39pp, ablation confirmed).
 - Ops are randomly subsampled each batch — same tier, different subset per image.
+- Strength ramps linearly over 5 epochs at each tier boundary.
 
-### Static Mixing Baseline
+### CLIP Validation of Tier Design
 
-Samples 8 ops from the full 19-op pool from epoch 1 at full strength. Identical op set and sample count to Tier 3 — the only variable vs curriculum is the progression, not the operations.
+The manual tier ordering is empirically validated using a frozen **CLIP ViT-B/32** model. All 19 ops receive a ✓ — CLIP's semantic difficulty ranking agrees with the manual assignment. Key finding: CLIP confirms solarize and blur are the hardest ops semantically, while flip and sharpness are the easiest.
+
+```bash
+# Run once offline to generate scores
+python -m augmentations.clip_calibration --dataset cifar100
+
+# Plot bar chart (grouped by tier, saved to results/figs/clip_validation/)
+python -m augmentations.plot_clip_scores --dataset cifar100
+```
 
 ---
 
 ## Scheduling Mechanisms
 
 ### ETS — Epoch-Threshold Scheduling
-Fixed epoch boundaries: `--tier_t1 0.20 --tier_t2 0.45` (fraction of total epochs).  
-Deterministic, reproducible. Default for thesis runs.
+Fixed epoch boundaries: `--tier_t1 0.20 --tier_t2 0.45` (fraction of total epochs).
+Deterministic, reproducible. **Best performing** on CIFAR-100: **81.32% ± 0.05%** (19-op, 3 seeds).
 
 ### LPS — Loss-Plateau Scheduling
-Advances tier when validation loss improvement over a sliding window drops below `lps_tau=0.02`.  
-Parameters: `--lps_tau 0.02 --lps_window 5 --lps_min_epochs 10`.  
-Requires `--val_split 0.1` (never use `--val_split 0.0` with LPS).
+Advances tier when validation loss improvement drops below `lps_tau=0.02` over a sliding window.
+Parameters: `--lps_tau 0.02 --lps_window 5 --lps_min_epochs 10`.
+Statistically equivalent to ETS: **81.35% ± 0.07%**. Requires `--val_split 0.1`.
 
-### EGS — Entropy-Guided Scheduling
-Per-sample advancement based on prediction entropy. Samples with plateauing entropy advance independently through tiers.  
-Parameters: `--egs_update_freq 5 --egs_min_epochs_per_tier 20 --egs_max_epochs_per_tier 40`.
+### EGS — Entropy-Guided Scheduling (v2)
+Per-sample advancement based on prediction entropy from a frozen pass over unaugmented data.
+Recommended v2 parameters for 100-epoch runs:
+
+```bash
+--egs_update_freq 3 --egs_min_epochs_per_tier 10 --egs_max_epochs_per_tier 25 \
+--egs_max_promote_frac 0.10 --egs_mix_threshold 0.50 --egs_mix_min_epoch 45 \
+--mix_alpha 0.2 --label_smoothing 0.1
+```
+
+EGS v2 result: **80.01% ± 0.27%** (−1.31pp vs ETS, structural gap due to delayed T3 exposure).
+
+### Reverse Curriculum (Ablation)
+Hard→Easy ordering to verify the easy→hard direction is required:
+```bash
+--reverse_curriculum
+```
+Result: **78.17%** (−3.18pp vs ETS) — confirms ordering matters.
+
+---
+
+## Key Results (WideResNet-28-10 · CIFAR-100 · 19-op · 100 ep)
+
+| Method | Seeds | Test Top-1 | Δ vs Static |
+|---|---|---|---|
+| No Augmentation | 1 | 72.86% | — |
+| Static Mixing | 3 | 77.43% ± 0.44% | — |
+| Tiered EGS v2 | 3 | 80.01% ± 0.27% | +2.58pp |
+| Tiered ETS | 3 | **81.32% ± 0.05%** | **+3.89pp** |
+| Tiered LPS | 3 | **81.35% ± 0.07%** | **+3.92pp** |
+
+### Key Findings
+
+1. **Curriculum advantage scales with op difficulty** — +0.01pp gain with 14 safe ops; +3.89pp with 19-op pool including blur/solarize/invert.
+2. **ETS ≈ LPS** — fixed epochs and adaptive loss-plateau produce statistically identical results (Δ = 0.03pp).
+3. **Ordering matters** — reverse curriculum drops 3.18pp; near-equivalent to static mixing.
+4. **Mixing decomposition** — CutMix alone (+2.45pp) outperforms combined CutMix+MixUp (+2.06pp). Curriculum amplifies mixing: CutMix hurts static (−0.80pp) but helps ETS (+2.45pp).
+5. **Architecture-agnostic** — +3.79pp gain on ResNet-50, matching WideResNet's +3.89pp.
 
 ---
 
 ## Experimental Setup
 
-| Hyperparameter | Value | Source |
-|---|---|---|
-| Dataset | CIFAR-100 | `config.py` |
-| Model | WideResNet-28-10 | `config.py` |
-| Training epochs | 100 | `config.py` |
-| Batch size | 128 | `config.py` |
-| Optimiser | SGD, lr=0.1, wd=5×10⁻⁴ | `config.py` |
-| LR scheduler | CosineAnnealingLR + 5-ep linear warmup | `config.py` |
-| Augmentation strength | 0.7 | `policies.py` |
-| Validation split | 0.1 (45k train / 5k val / 10k test) | `config.py` |
-| Seeds | 42, 123, 456 | multi-seed sweep |
+| Hyperparameter | Value |
+|---|---|
+| Primary dataset | CIFAR-100 |
+| Primary model | WideResNet-28-10 |
+| Training epochs | 100 |
+| Batch size | 128 |
+| Optimiser | SGD, lr=0.1, wd=5×10⁻⁴ |
+| LR scheduler | CosineAnnealingLR + 5-ep linear warmup |
+| Augmentation strength | 0.7 |
+| Validation split | 0.1 (45k/5k/10k) |
+| Seeds | 42, 123, 456 |
+| Secondary model | ResNet-50 (architecture generalisation) |
+| Secondary dataset | Tiny-ImageNet (dataset generalisation) |
 
 ---
 
 ## Training
 
-### Debug mode (2 epochs, 512 samples — sanity check)
+### Debug mode (2 epochs, 512 samples)
 
 ```bash
 python -m experiments.train_baseline --augmentation tiered_curriculum \
     --tier_schedule ets --dataset cifar10 --model resnet18 --debug
 ```
 
-### Full thesis run matrix (WideResNet, CIFAR-100, 3 seeds each)
+### Primary run matrix (WideResNet · CIFAR-100 · 3 seeds)
 
 ```bash
 # Static mixing baseline
 python -m experiments.train_baseline --dataset cifar100 --model wideresnet \
     --augmentation static_mixing --epochs 100 --scheduler cosine \
-    --warmup_epochs 5 --lr 0.1 --use_amp --use_wandb --seed 42
+    --warmup_epochs 5 --lr 0.1 --use_amp --seed 42
 
-# Tiered curriculum — ETS
+# ETS
 python -m experiments.train_baseline --dataset cifar100 --model wideresnet \
     --augmentation tiered_curriculum --tier_schedule ets --epochs 100 \
-    --scheduler cosine --warmup_epochs 5 --lr 0.1 --use_amp --use_wandb --seed 42
+    --scheduler cosine --warmup_epochs 5 --lr 0.1 --use_amp --seed 42
 
-# Tiered curriculum — LPS
+# LPS
 python -m experiments.train_baseline --dataset cifar100 --model wideresnet \
     --augmentation tiered_curriculum --tier_schedule lps --epochs 100 \
-    --scheduler cosine --warmup_epochs 5 --lr 0.1 --use_amp --use_wandb --seed 42
+    --scheduler cosine --warmup_epochs 5 --lr 0.1 --use_amp --seed 42
 
-# Tiered curriculum — EGS
+# EGS v2
 python -m experiments.train_baseline --dataset cifar100 --model wideresnet \
     --augmentation tiered_curriculum --tier_schedule egs --epochs 100 \
-    --scheduler cosine --warmup_epochs 5 --lr 0.1 --use_amp --use_wandb --seed 42
+    --scheduler cosine --warmup_epochs 5 --lr 0.1 \
+    --egs_update_freq 3 --egs_min_epochs_per_tier 10 --egs_max_epochs_per_tier 25 \
+    --egs_max_promote_frac 0.10 --egs_mix_threshold 0.50 --egs_mix_min_epoch 45 \
+    --mix_alpha 0.2 --label_smoothing 0.1 --use_amp --seed 42
 ```
 
-Replace `--seed 42` with `--seed 123` and `--seed 456` for the full 3-seed sweep.
+Replace `--seed 42` with `--seed 123` and `--seed 456` for the 3-seed sweep.
 
-### Resume from checkpoint
-
-```bash
-python -m experiments.train_baseline ... --resume checkpoints/<name>_best.pth
-```
-
-### Op ranking (loss-based tier ordering)
+### Ablation runs
 
 ```bash
-python -m experiments.rank_aug_ops \
-    --checkpoint checkpoints/<name>_best.pth \
-    --dataset cifar100 \
-    --output results/aug_op_ranking.json
-```
+# Reverse curriculum
+python -m experiments.train_baseline --dataset cifar100 --model wideresnet \
+    --augmentation tiered_curriculum --tier_schedule ets --reverse_curriculum \
+    --epochs 100 --scheduler cosine --use_amp --seed 42
 
-Pass `--op_ranking_file results/aug_op_ranking.json` to any training run to use loss-ranked op ordering and per-op calibrated strengths instead of the manual tier design.
+# ETS no mixing
+python -m experiments.train_baseline --dataset cifar100 --model wideresnet \
+    --augmentation tiered_curriculum --tier_schedule ets --mix_mode none \
+    --epochs 100 --scheduler cosine --use_amp --seed 42
 
----
-
-## Analysis
-
-### Validation curves
-
-```bash
-python analysis/plot_curves.py --mode all
-```
-
-### Method comparison table and bar chart
-
-```bash
-python analysis/compare_methods.py
-```
-
-Output: `results/figures/fig_compare_methods.png` — best val acc, test top-1, test top-5, val–test gap per method.
-
-### Augmentation schedule visualiser
-
-```bash
-python analysis/visualize_schedule.py
+# CutMix only
+python -m experiments.train_baseline --dataset cifar100 --model wideresnet \
+    --augmentation tiered_curriculum --tier_schedule ets --mix_mode cutmix \
+    --epochs 100 --scheduler cosine --use_amp --seed 42
 ```
 
 ---
 
 ## Checkpoints
 
-Each completed run writes two files to `checkpoints/`:
-
 | File | Contents |
 |---|---|
-| `{experiment_name}_best.pth` | Best model weights + val_acc, test_top1, test_top5 |
-| `{experiment_name}_history.pt` | Full per-epoch history (train_loss, train_acc, val_loss, val_acc, val_top5) |
+| `{name}_best.pth` | Best model weights + val_acc, test_top1, test_top5, cfg |
+| `{name}_history.pt` | Full per-epoch history (train_loss, train_acc, val_loss, val_acc, val_top5) |
 
-Experiment names are auto-built: `{model}_{aug}_{optimizer}_{scheduler}_ep{N}_{dataset}_s{seed}_p{pool_size}`.  
-Example: `wideresnet_tiered_ets_mix_both_sgd_cosine_ep100_cifar100_s42_p19`
-
----
-
-## Results
-
-WideResNet-28-10 on CIFAR-100, dev mode (val_split=0.1), seed 42.
-
-| Method | Scheduler | Best Val Top-1 | Test Top-1 | Val–Test Gap |
-|---|---|---|---|---|
-| Static Mixing | cosine | — | — | — |
-| Tiered ETS | cosine | 81.96% | 81.84% | 0.12% |
-| Tiered LPS | cosine | — | — | — |
-| Tiered EGS | cosine | — | — | — |
-
-Multi-seed results (seeds 42/123/456) in progress.
-
----
-
-## Research Questions
-
-1. Does progressively introducing augmentation operations outperform applying them all from epoch 1?
-2. Which scheduling signal (fixed epochs, loss plateau, entropy plateau) produces the best tier advancement strategy?
-3. Does curriculum augmentation reduce overfitting as measured by the training–validation accuracy gap?
+Auto-built name pattern: `{model}_{aug}_{optimizer}_{scheduler}_ep{N}_{dataset}_s{seed}_p{pool}`
 
 ---
 
 ## Changelog
 
+### 2026-05-22
+- **augmentations/clip_scorer.py** — new: CLIPDifficultyScorer using frozen CLIP ViT-B/32; scores 1 − cosine_similarity per image pair
+- **augmentations/clip_calibration.py** — new: offline script scoring all 19 ops + CutMix/MixUp; saves `configs/aug_difficulty_scores_{dataset}.pt`
+- **augmentations/plot_clip_scores.py** — new: publication-quality bar chart grouped by tier with colorblind-safe palette; saves to `results/figs/clip_validation/`
+- **analysis/**: add `thesis_writing.md` (ready-to-use thesis paragraphs) and `related_works.md` (survey of 8 related papers)
+
+### 2026-05-21
+- **augmentations/policies.py** — add `--reverse_curriculum` flag; reverse curriculum (Hard→Easy) validated: 78.17% (−3.18pp vs ETS)
+- **experiments/train_baseline.py** — add `--reverse_curriculum` CLI arg; wire through `build_transforms`
+- **experiments/compute_entropy.py** — fix misleading force-promotion print; now reports actual promoted count after cap
+- **Mixing ablation complete** — CutMix alone (81.74%) > Both (81.35%) > MixUp alone (80.45%) > No mix (79.29%); curriculum amplifies CutMix benefit (+2.45pp vs −0.80pp for static)
+
+### 2026-05-20
+- **EGS v2** — fix training collapse (was 40% train acc); tighten entropy thresholds, add 10-ep mixing ramp, label_smoothing=0.1; result: 80.01% ± 0.27%
+- **experiments/config.py** — add `egs_t2_entropy_thresh=0.40`, `egs_t3_entropy_thresh=0.15`, `egs_mix_ramp_epochs=10`
+- **ResNet-50 architecture comparison complete** — ETS: 80.41%, LPS: 80.50% (+3.79/+3.88pp vs static); gap vs WideResNet narrows from 7.56pp (no-aug) to 0.85pp (curriculum)
+
 ### 2026-05-15
-- **augmentations/policies.py** — `tier_label()` now derives op names and pool sizes from `_tier_ops` at runtime; startup print fully dynamic from `_TIER_OPS`; tier activation printed immediately when ETS crosses a boundary
-- **experiments/rank_aug_ops.py** — new script: rank ops by val-loss delta, produce `aug_op_ranking.json` for loss-based tier ordering
-- **analysis/wideresnet_cifar100/C1_tiered_ets_cosine_wr_s42.md** — scheduler ablation: cosine_wr vs plain cosine on ETS, WideResNet, CIFAR-100. cosine_wr collapsed 27.88pp at epoch 50 due to LR restart coinciding with Tier 3 activation. cosine_wr ruled out.
+- **augmentations/policies.py** — `tier_label()` derives op names/sizes from `_tier_ops` at runtime; tier activation printed immediately when ETS crosses boundary
+- **Scheduler ablation** — cosine_wr collapsed 27.88pp at epoch 50 due to LR restart coinciding with Tier 3 activation; cosine_wr ruled out
