@@ -52,7 +52,7 @@ SAVE_DIR.mkdir(parents=True, exist_ok=True)
 # Layout: Row 1 = baselines, Row 2 = curriculum methods
 RUNS = {
     "No Augmentation": "wideresnet_none_sgd_cosine_ep100_cifar100_s42",
-    "Static Mixing": "wideresnet_static_mixing_mix_both_sgd_cosine_ep100_cifar100_s42_p19",
+    "Static Mixing": "wideresnet_static_mixing_sgd_cosine_ep100_cifar100_s42_p19",
     "ETS": "wideresnet_tiered_ets_mix_both_sgd_cosine_ep100_cifar100_s42_p19",
     "LPS": "wideresnet_tiered_lps_mix_both_sgd_cosine_ep100_cifar100_s42_p19",
     "EGS": "egs_v2_100ep_s42_ep100_cifar100_s42_p19",
