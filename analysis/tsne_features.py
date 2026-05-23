@@ -187,7 +187,7 @@ def run_tsne(features: np.ndarray) -> np.ndarray:
     tsne = TSNE(
         n_components=2,
         perplexity=TSNE_PERPLEX,
-        n_iter=TSNE_ITER,
+        max_iter=TSNE_ITER,
         random_state=RANDOM_STATE,
         init="pca",  # PCA init is more stable than random
         learning_rate="auto",

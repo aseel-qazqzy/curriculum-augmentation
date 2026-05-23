@@ -239,12 +239,15 @@ python -m experiments.train_baseline --dataset cifar100 --model wideresnet \
 
 ## Group J — Analysis Tasks *(no new training)*
 
+> ⭐ = grade-boosting addition · ⚠️ MVT = minimum viable thesis
+
 | Task | Uses | Answers | Status |
 |:---|:---|:---|:---:|
-| Statistical significance (t-test / Wilcoxon) | 3-seed results | Are observed differences statistically significant? | 📋 |
+| **Statistical significance (t-test / Wilcoxon)** ⚠️ MVT | 3-seed results | Are observed differences statistically significant? | 📋 |
+| **t-SNE feature visualisation** ⭐ | WRN checkpoints (all 5 methods) | Do curriculum models learn better-separated representations? | 📋 |
+| **CIFAR-100-C robustness (mCE)** ⭐ | WRN checkpoints | Is the model more robust to natural corruptions? | 📋 |
 | Convergence speed (epochs to 70/75/80%) | History files | Does curriculum reach target accuracy faster? | 📋 |
-| ECE — Expected Calibration Error | WRN checkpoints | Does curriculum reduce model overconfidence? | 📋 |
-| CIFAR-100-C robustness (mCE, 15 types × 5 severities) | WRN checkpoints | Is the model more robust to natural corruptions? | 📋 |
+| ECE — Expected Calibration Error ⭐ | WRN checkpoints | Does curriculum reduce model overconfidence? | 📋 |
 | Per-class accuracy analysis (top/bottom 10 classes) | WRN checkpoints | Which classes benefit most from curriculum? | 📋 |
 | EGS force-promoted sample analysis | EGS logs | Do stuck samples concentrate in specific semantic categories? | 📋 |
 | Tier transition dip quantification | ETS/LPS histories | How large are accuracy dips at tier boundaries and how fast is recovery? | 📋 |
@@ -252,29 +255,99 @@ python -m experiments.train_baseline --dataset cifar100 --model wideresnet \
 | Train–val gap inversion analysis | All histories | Does curriculum reduce overfitting (train acc ≈ val acc)? | 📋 |
 | MADAug comparison vs published numbers | Their paper | How does the method compare to the closest prior work? | 📋 |
 
+### Group J Commands
+
+```bash
+# t-SNE feature visualisation (all 5 methods — run on cluster)
+python analysis/tsne_features.py --data_root data --val_split 0.1
+# Output: results/figs/tsne/tsne_grid.png (thesis) + tsne_row.png (slides)
+
+# Statistical significance — Welch's t-test between ETS and Static Mixing
+# (3-seed results already in thesis_results_tables.md — just run this script)
+python - << 'EOF'
+from scipy import stats
+import numpy as np
+# WideResNet · CIFAR-100 · 19-op · 100ep (seed 42, 123, 456)
+ets     = [81.35, 81.25, 81.35]
+lps     = [81.36, 81.43, 81.27]
+egs     = [79.83, 80.39, 79.81]
+static  = [77.79, 76.82, 77.69]
+pairs = [("ETS vs Static", ets, static), ("LPS vs Static", lps, static),
+         ("ETS vs EGS",   ets, egs),    ("ETS vs LPS",   ets, lps)]
+for name, a, b in pairs:
+    t, p = stats.ttest_ind(a, b, equal_var=False)  # Welch's t-test
+    stars = "***" if p < 0.001 else "**" if p < 0.01 else "*" if p < 0.05 else "ns"
+    d = (np.mean(a) - np.mean(b)) / np.sqrt((np.std(a)**2 + np.std(b)**2) / 2)
+    print(f"{name:<20}  t={t:.3f}  p={p:.4f}  {stars}  Cohen's d={d:.2f}")
+EOF
+
+# Convergence speed — epochs to reach 70% / 75% / 80% (from history files)
+python - << 'EOF'
+import torch, sys
+from pathlib import Path
+sys.path.insert(0, '.')
+CKPT = Path("checkpoints")
+thresholds = [0.70, 0.75, 0.80]
+runs = {
+    "Static":  "wideresnet_static_mixing_mix_both_sgd_cosine_ep100_cifar100_s42_p19",
+    "ETS":     "wideresnet_tiered_ets_mix_both_sgd_cosine_ep100_cifar100_s42_p19",
+    "LPS":     "wideresnet_tiered_lps_mix_both_sgd_cosine_ep100_cifar100_s42_p19",
+    "EGS":     "egs_v2_100ep_s42_ep100_cifar100_s42_p19",
+}
+print(f"{'Method':<12}", "  ".join(f"{int(t*100)}%@ep" for t in thresholds))
+for name, stem in runs.items():
+    h = torch.load(CKPT / f"{stem}_history.pt", map_location="cpu", weights_only=False)
+    accs = h["val_acc"]
+    epochs = [next((i+1 for i,a in enumerate(accs) if a >= t), None) for t in thresholds]
+    print(f"{name:<12}", "  ".join(str(e) if e else "—" for e in epochs))
+EOF
+
+# RandAugment (cluster — ~135 min)
+python -m experiments.train_baseline --dataset cifar100 --model wideresnet \
+    --augmentation randaugment --ra_n 2 --ra_m 9 \
+    --epochs 100 --scheduler cosine --warmup_epochs 5 --lr 0.1 \
+    --use_amp --seed 42
+
+# Random augmentation same pool (cluster — ~135 min)
+python -m experiments.train_baseline --dataset cifar100 --model wideresnet \
+    --augmentation random --epochs 100 --scheduler cosine \
+    --warmup_epochs 5 --lr 0.1 --use_amp --seed 42
+
+# LPS Tiny-ImageNet (cluster — ~1069 min)
+python -m experiments.train_baseline --dataset tiny_imagenet --model wideresnet \
+    --augmentation tiered_curriculum --tier_schedule lps \
+    --epochs 100 --scheduler cosine --warmup_epochs 5 --lr 0.1 \
+    --use_amp --seed 42
+```
+
 ---
 
 ## Priority Order
 
-| Rank | Experiment / Task | Est. Time | Why |
-|:---:|:---|:---:|:---|
-| 1 | EGS 19-op seeds 123 + 456 | ~576 min | Completes primary Table 2 |
-| 2 | RandAugment | ~135 min | MVT — named in FIT, must be in main table |
-| 3 | ETS no-mix | ~135 min | MVT — direct answer to "is it mixing or curriculum?" |
-| 4 | **Reverse curriculum** | ~135 min | FIT Q105 — single most important ablation |
-| 5 | Hard from epoch 1 | ~135 min | MVT — answers "does order matter?" |
-| 6 | Random augmentation | ~135 min | Required baseline |
-| 7 | MultiStep scheduler × 3 | ~405 min | Committee will ask why cosine was chosen |
-| 8 | CutMix only + MixUp only | ~270 min | FIT Q33 — mixing component analysis |
-| 9 | Tiny-ImageNet × 4 | ~900 min | FIT Slide 11 — scalability promise |
-| 10 | ResNet-50 × 4 | ~540 min | FIT primary backbone — committee expects this |
-| 11 | Tier boundary timing × 3 | ~405 min | FIT Q16, Q30 — sensitivity |
-| 12 | Strength ablation × 3 | ~405 min | FIT Q71-72 |
-| 13 | EGS sensitivity × 3 | ~576 min | FIT Q24 |
-| 14 | T1+T3 skip, 2-tier | ~270 min | Structure ablation |
-| 15 | Statistical significance | analysis | MVT — FIT Q50 |
-| 16 | CIFAR-100-C + ECE + per-class | analysis | FIT Q51-52 |
-| 17 | Convergence speed analysis | analysis | FIT Q9, Q69 |
+> ✅ = done · 📋 = pending
+
+| Rank | Experiment / Task | Est. Time | Why | Status |
+|:---:|:---|:---:|:---|:---:|
+| 1 | EGS 19-op seeds 123 + 456 | ~576 min | Completes primary Table 2 | ✅ |
+| 2 | **RandAugment** | ~135 min | MVT — named in FIT, must be in main table | 📋 |
+| 3 | ETS no-mix | ~135 min | MVT — direct answer to "is it mixing or curriculum?" | ✅ |
+| 4 | Reverse curriculum | ~135 min | FIT Q105 — single most important ablation | ✅ |
+| 5 | Hard from epoch 1 | ~135 min | MVT — answers "does order matter?" | 📋 |
+| 6 | Random augmentation | ~135 min | Required baseline | 📋 |
+| 7 | **Statistical significance (t-test)** | analysis | MVT — FIT Q50 | 📋 |
+| 8 | **t-SNE feature visualisation** ⭐ | ~30 min | Shows better representations visually | 📋 |
+| 9 | **CIFAR-100-C robustness** ⭐ | ~2 hrs | Proves generalisation beyond CIFAR-100 test set | 📋 |
+| 10 | CutMix only + MixUp only | ~270 min | FIT Q33 — mixing decomposition | ✅ |
+| 11 | Tiny-ImageNet LPS | ~1069 min | Completes Group H | 📋 |
+| 12 | ResNet-50 × 4 | ~540 min | FIT primary backbone | ✅ |
+| 13 | MultiStep scheduler × 3 | ~405 min | Committee will ask why cosine was chosen | 📋 |
+| 14 | Tier boundary timing × 3 | ~405 min | FIT Q16, Q30 — sensitivity | 📋 |
+| 15 | Strength ablation × 3 | ~405 min | FIT Q71-72 | 📋 |
+| 16 | EGS sensitivity × 3 | ~576 min | FIT Q24 | 📋 |
+| 17 | T1+T3 skip, 2-tier | ~270 min | Structure ablation | 📋 |
+| 18 | Convergence speed analysis | analysis | FIT Q9, Q69 | 📋 |
+| 19 | ECE calibration ⭐ | analysis | Shows curriculum improves model confidence | 📋 |
+| 20 | Per-class accuracy analysis | analysis | FIT Q51-52 | 📋 |
 
 ---
 
@@ -282,16 +355,16 @@ python -m experiments.train_baseline --dataset cifar100 --model wideresnet \
 
 | Group | Runs Remaining | Est. Time |
 |:---|:---:|:---:|
-| A — Core | 4 | ~576 min |
+| A — Core | 2 | ~270 min |
 | B — Scheduler | 3 | ~405 min |
-| C — Mixing | 5 | ~675 min |
-| D — Curriculum structure | 5 | ~675 min |
+| C — Mixing | 0 | ✅ complete |
+| D — Curriculum structure | 4 | ~540 min |
 | E — Strength | 4 | ~540 min |
 | F — Tier boundaries | 3 | ~405 min |
 | G — EGS sensitivity | 4 | ~576 min |
-| H — Tiny-ImageNet | 4 | ~900 min |
-| I — ResNet-50 | 4 | ~540 min |
-| **Total** | **36 runs** | **~97 hours** |
+| H — Tiny-ImageNet | 1 | ~1069 min |
+| I — ResNet-50 | 0 | ✅ complete |
+| **Total** | **21 runs** | **~64 hours** |
 
 ---
 
