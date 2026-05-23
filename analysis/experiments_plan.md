@@ -205,7 +205,7 @@ python -m experiments.train_baseline --dataset cifar100 --model wideresnet \
 | Experiment | Apply | Seeds | Arch | Pool | Dataset | Status |
 |:---|:---:|:---:|:---:|:---:|:---:|:---:|
 | No Augmentation | — | 1 | W | — | Tiny-ImageNet | ✅ 63.46% s42 · 1043 min |
-| Static Mixing | — | 1 | W | 19 | Tiny-ImageNet | 📋 |
+| Static Mixing | — | 1 | W | 19 | Tiny-ImageNet | ✅ 66.88% s42 · 1069 min |
 | Tiered ETS | E | 1 | W | 19 | Tiny-ImageNet | 📋 |
 | Tiered LPS | L | 1 | W | 19 | Tiny-ImageNet | 📋 |
 
@@ -305,6 +305,97 @@ python -m experiments.train_baseline --dataset cifar100 --model wideresnet \
 | T2 only | Same as above |
 | No strength ramp | `--strength_ramp_epochs 0` flag |
 | Hard from epoch 1 | ✅ Already works: `--tier_t1 0.0 --tier_t2 0.0` |
+
+---
+
+---
+
+## Visualisation — Plot Commands
+
+All figures save to `results/figures/`. Run from project root with the venv active.
+
+### While runs are still in progress — single-run plots
+
+Use these any time you want to visualise one completed run. Just swap the `--name` to match the checkpoint prefix.
+
+```bash
+# ETS CIFAR-100 (already on local machine)
+python analysis/plot_curves.py --mode single \
+  --name "wideresnet_tiered_ets_mix_both_sgd_cosine_wr_ep100_cifar100_s42_p19" \
+  --title "WideResNet-28-10 · ETS + mix · CIFAR-100 · 100 epochs" \
+  --label "ETS + mix (ours)"
+
+# Tiny-ImageNet run (once cluster finishes and you scp the history file)
+python analysis/plot_curves.py --mode single \
+  --name "ets_wrn_tinyimagenet_19op_100ep_s42_ep100_tiny_imagenet_s42_p19" \
+  --title "WideResNet-28-10 · ETS + mix · Tiny-ImageNet · 100 epochs" \
+  --label "ETS + mix (ours)"
+```
+
+Each single-run command produces 4 panels: train/val loss, train/val accuracy, val accuracy with tier shading, and generalization gap — all with tier transition markers.
+
+---
+
+### After all runs finish — full thesis figure set
+
+Download the cluster `checkpoints/` folder locally, then run one command per dataset. These generate all 16 figures automatically, skip anything that's missing, and print a full analysis table.
+
+```bash
+# CIFAR-100 — primary dataset, all 16 figures
+python analysis/plot_curves.py --mode thesis \
+  --dataset cifar100 --model wideresnet \
+  --seeds 42,43,44 --epochs 100 \
+  --checkpoint_dir /path/to/checkpoints
+
+# Tiny-ImageNet — scalability figures
+python analysis/plot_curves.py --mode thesis \
+  --dataset tiny_imagenet --model wideresnet \
+  --seeds 42,43,44 --epochs 100 \
+  --checkpoint_dir /path/to/checkpoints
+```
+
+---
+
+### Individual figure commands (run any one on its own)
+
+These are useful when you only need to regenerate one specific plot without rerunning everything.
+
+```bash
+# Fig 10 — multi-seed confidence bands (needs 3 seeds per method)
+# → runs automatically inside --mode thesis
+
+# Fig 11 — reverse vs forward curriculum (needs reverse checkpoint)
+# → runs automatically inside --mode thesis when reverse run is done
+
+# Fig 12 — zoomed tier transitions (magnifies what happens at ep 20 and ep 45)
+# → runs automatically inside --mode thesis
+
+# Fig 13 — cross-dataset delta bar chart (needs CIFAR-100 + Tiny-ImageNet checkpoints)
+# → runs automatically inside --mode thesis when both datasets are done
+
+# Baselines only (no aug, static, randaugment)
+python analysis/plot_curves.py --mode baselines \
+  --checkpoint_dir /path/to/checkpoints
+
+# Ablation panel (static → static+mix → ets-nomix → ets+mix)
+python analysis/plot_curves.py --mode ablation \
+  --checkpoint_dir /path/to/checkpoints
+```
+
+---
+
+### What each figure answers for the committee
+
+| Figure | File | Committee question |
+|:---|:---|:---|
+| fig9 | `fig9_single_run_*.png` | Full training dynamics for one run |
+| fig10 | `fig10_multiseed_*.png` | Is the improvement real or just noise? |
+| fig11 | `fig11_reverse_*.png` | Does tier ordering actually matter? |
+| fig12 | `fig12_tier_zoom_*.png` | What happens at the tier boundaries? |
+| fig13 | `fig13_cross_dataset.png` | Does it generalise beyond CIFAR-100? |
+| fig14 | `fig14_ablation_*.png` | What component is doing the work? |
+| fig15 | `fig15_scheduling_*.png` | Why those specific tier thresholds? |
+| fig16 | `fig16_convergence_*.png` | Does curriculum actually speed up learning? |
 
 ---
 
