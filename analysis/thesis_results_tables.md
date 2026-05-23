@@ -361,12 +361,16 @@
 
 | Method | Test Top-1 | Train Acc | Train–Test Gap | Val–Test Gap | Time |
 |:---|:---:|:---:|:---:|:---:|:---:|
-| No Augmentation | **63.46%** | 99.99% | **36.53pp** | 0.25% | 1043 min |
-| Static Mixing | 📋 | — | — | — | — |
+| No Augmentation | 63.46% | 99.99% | **36.53pp** | 0.25% | 1043 min |
+| Static Mixing | **66.88%** | 55.09% | −11.79pp† | **0.05%** | 1069 min |
 | Tiered ETS | 📋 | — | — | — | — |
 | Tiered LPS | 📋 | — | — | — | — |
 
-> **Finding (partial — no-aug only):** Without augmentation, WideResNet-28-10 memorises Tiny-ImageNet almost perfectly (99.99% train) while achieving only 63.46% test accuracy — a 36.53pp train-test gap. This is substantially worse than the CIFAR-100 no-aug gap (27.12pp: 99.98% train vs 72.86% test), reflecting Tiny-ImageNet's greater difficulty: 200 classes, 64×64 resolution, and higher intra-class variance. The tight val-test gap (0.25%) confirms the evaluation is reliable. Full curriculum comparison pending.
+> † Train acc is artificially low with CutMix/MixUp (mixed labels) — test > train is expected.
+>
+> **Finding 1 — Severe overfitting without augmentation:** Without augmentation, WideResNet-28-10 memorises Tiny-ImageNet almost perfectly (99.99% train, 63.46% test) — a 36.53pp train-test gap, substantially larger than CIFAR-100 (27.12pp), confirming Tiny-ImageNet is a harder generalisation problem.
+>
+> **Finding 2 — Static mixing reduces overfitting but less effectively than on CIFAR-100:** Static mixing achieves 66.88% (+3.42pp over no-aug). The train-test gap effectively disappears (train 55.09% < test 66.88% — CutMix/MixUp label mixing suppresses apparent train accuracy). However, the +3.42pp gain is smaller than on CIFAR-100 (+4.57pp), suggesting aggressive augmentation from epoch 1 is proportionally harder to benefit from on a 200-class dataset. The tightest val-test gap across all experiments (0.05%) confirms excellent generalisation consistency. Curriculum comparison (ETS, LPS) pending.
 
 ---
 
@@ -375,6 +379,6 @@
 | Method | Pool | Seed | Ep | Test Top-1 | Train Acc | Val–Test Gap | Time |
 |:---|:---:|:---:|:---:|:---:|:---:|:---:|:---:|
 | no_aug | — | 42 | 100 | 63.46% | 99.99% | 0.25% | 1043 min |
-| static_mixing | 19 | 42 | 100 | 📋 | — | — | — |
+| static_mixing | 19 | 42 | 100 | 66.88% | 55.09% | 0.05% | 1069 min |
 | tiered_ets | 19 | 42 | 100 | 📋 | — | — | — |
 | tiered_lps | 19 | 42 | 100 | 📋 | — | — | — |

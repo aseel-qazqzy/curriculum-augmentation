@@ -141,11 +141,15 @@ To assess whether the curriculum benefit observed on CIFAR-100 extends to a hard
 
 Without augmentation, WideResNet-28-10 achieves 63.46% test accuracy on Tiny-ImageNet while memorising the training set almost perfectly (99.99% train accuracy), producing a 36.53pp train-test gap. This substantially exceeds the corresponding CIFAR-100 no-augmentation gap (27.12pp), reflecting Tiny-ImageNet's greater difficulty: twice as many classes, larger spatial resolution (64×64 vs 32×32), and higher intra-class appearance variance. The tight val-test gap (0.25%) confirms the evaluation is reliable and the model generalises consistently to held-out data. This severe overfitting establishes a strong motivation for augmentation: the model has sufficient capacity to memorise 90,000 images but cannot generalise without regularisation.
 
+**Static mixing paragraph:**
+
+Static mixing achieves 66.88% on Tiny-ImageNet, a gain of +3.42pp over the no-augmentation baseline (63.46%). While this confirms that augmentation is beneficial, the gain is smaller than observed on CIFAR-100 (+4.57pp), suggesting that the aggressive 19-op pool applied uniformly from epoch 1 is proportionally more damaging on a harder 200-class dataset. Notably, CutMix/MixUp label mixing suppresses apparent training accuracy to 55.09%, yet test accuracy reaches 66.88% — a negative apparent train-test gap that reflects the regularisation effect of mixed labels rather than true overfitting. The val-test gap of 0.05% is the tightest across all experiments, indicating highly stable evaluation.
+
 **Pending — curriculum comparison paragraph (template):**
 
-*(Fill in after ETS, LPS, Static results are available)*
+*(Fill in after ETS and LPS results are available)*
 
-> Table 14 reports the full curriculum comparison on Tiny-ImageNet. Tiered ETS achieves __% and LPS achieves __%, compared to static mixing at __% and no augmentation at 63.46%. The curriculum advantage of __pp on Tiny-ImageNet [matches / exceeds / is smaller than] the 3.89pp advantage on CIFAR-100, suggesting that the progressive augmentation mechanism [generalises robustly / is somewhat dataset-dependent]. The no-augmentation train-test gap of 36.53pp is reduced to __pp with curriculum augmentation, confirming that the curriculum provides strong regularisation on a harder dataset.
+> Table 14 reports the full curriculum comparison on Tiny-ImageNet. Tiered ETS achieves __% and LPS achieves __%, compared to static mixing at 66.88% and no augmentation at 63.46%. The curriculum advantage of __pp on Tiny-ImageNet [matches / exceeds / is smaller than] the 3.89pp advantage on CIFAR-100, suggesting that the progressive augmentation mechanism [generalises robustly / is somewhat dataset-dependent].
 
 ---
 
