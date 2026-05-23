@@ -135,21 +135,23 @@ The CLIP scores confirm the coarse tier structure: blur (0.121) and solarize (0.
 
 **Opening paragraph:**
 
-To assess whether the curriculum benefit observed on CIFAR-100 extends to a harder and more diverse dataset, we evaluate the same WideResNet-28-10 architecture on Tiny-ImageNet — a 200-class, 64×64 image classification benchmark with 90,000 training samples.
+To assess whether the curriculum benefit observed on CIFAR-100 extends to a harder and more diverse dataset, we evaluate the same WideResNet-28-10 architecture on Tiny-ImageNet — a 200-class, 64×64 image classification benchmark with 90,000 training samples. Three conditions are compared: no augmentation, static mixing (CutMix applied from epoch 1), and the proposed tiered ETS curriculum.
 
 **No-augmentation baseline paragraph:**
 
 Without augmentation, WideResNet-28-10 achieves 63.46% test accuracy on Tiny-ImageNet while memorising the training set almost perfectly (99.99% train accuracy), producing a 36.53pp train-test gap. This substantially exceeds the corresponding CIFAR-100 no-augmentation gap (27.12pp), reflecting Tiny-ImageNet's greater difficulty: twice as many classes, larger spatial resolution (64×64 vs 32×32), and higher intra-class appearance variance. The tight val-test gap (0.25%) confirms the evaluation is reliable and the model generalises consistently to held-out data. This severe overfitting establishes a strong motivation for augmentation: the model has sufficient capacity to memorise 90,000 images but cannot generalise without regularisation.
 
-**Static mixing paragraph:**
+**Curriculum comparison paragraph:**
 
-Static mixing achieves 66.88% on Tiny-ImageNet, a gain of +3.42pp over the no-augmentation baseline (63.46%). While this confirms that augmentation is beneficial, the gain is smaller than observed on CIFAR-100 (+4.57pp), suggesting that the aggressive 19-op pool applied uniformly from epoch 1 is proportionally more damaging on a harder 200-class dataset. Notably, CutMix/MixUp label mixing suppresses apparent training accuracy to 55.09%, yet test accuracy reaches 66.88% — a negative apparent train-test gap that reflects the regularisation effect of mixed labels rather than true overfitting. The val-test gap of 0.05% is the tightest across all experiments, indicating highly stable evaluation.
+Table 14 reports the full comparison on Tiny-ImageNet. Tiered ETS achieves **69.16%** test accuracy (Top-5: 87.48%), compared to static mixing at **66.88%** (Top-5: 87.18%) and no augmentation at 63.46%. The curriculum advantage is **+2.28pp**, confirming that the progressive augmentation mechanism generalises beyond CIFAR-100. The slightly smaller advantage versus CIFAR-100 (+2.28pp vs +3.89pp) is consistent with Tiny-ImageNet's larger training set (90,000 vs 45,000 images): more diverse training examples reduce the marginal benefit of curriculum-based pacing, since the model encounters sufficient within-class variety even under static scheduling.
 
-**Pending — curriculum comparison paragraph (template):**
+**Regularisation effect paragraph:**
 
-*(Fill in after ETS and LPS results are available)*
+The curriculum provides strong regularisation on Tiny-ImageNet. The no-augmentation train-test gap of 36.53pp is reduced to 14.71pp with ETS — a compression of 21.82pp. Static mixing compresses the apparent gap further (train 55.09% vs test 66.88%), but this is largely an artefact of CutMix mixed-label training: the model is scored against soft interpolated labels during training batches, artificially depressing reported train accuracy. The underlying regularisation from static mixing is weaker than it appears: applying CutMix from epoch 1 prevents stable early feature acquisition, resulting in 66.88% test accuracy vs ETS's 69.16%.
 
-> Table 14 reports the full curriculum comparison on Tiny-ImageNet. Tiered ETS achieves __% and LPS achieves __%, compared to static mixing at 66.88% and no augmentation at 63.46%. The curriculum advantage of __pp on Tiny-ImageNet [matches / exceeds / is smaller than] the 3.89pp advantage on CIFAR-100, suggesting that the progressive augmentation mechanism [generalises robustly / is somewhat dataset-dependent].
+**Tier transition paragraph:**
+
+The tier-transition accuracy dip observed on CIFAR-100 replicates on Tiny-ImageNet. At the T2→T3 transition (epoch 46), validation accuracy dropped from 47.42% to 43.01% at epoch 50 — a −4.41pp dip — before recovering to 69.32% by epoch 97. This dip is slightly smaller in magnitude than the CIFAR-100 T2→T3 dip (~9pp), likely because Tiny-ImageNet's larger training set provides sufficient samples to adapt to the new high-distortion ops more quickly. The consistency of the dip pattern across datasets and scales confirms it is an inherent feature of the progressive curriculum mechanism — not a CIFAR-100-specific artefact — and is evidence that the curriculum is correctly introducing perceptually harder operations at each tier boundary.
 
 ---
 
@@ -173,3 +175,6 @@ Static mixing achieves 66.88% on Tiny-ImageNet, a gain of +3.42pp over the no-au
 | F12 | CLIP validates manual tier design — all 19 ops consistent with manual assignment | All ✓ in Table A1 | A1 |
 | F13 | CLIP reveals semantic vs learning-stability distinction: grayscale is semantically easy but manually T3 | Rank 4th by CLIP, T3 in design | A1 |
 | F14 | Tiny-ImageNet no-aug: 99.99% train / 63.46% test = 36.53pp gap — more severe than CIFAR-100 (27.12pp) | Higher dataset difficulty | 14 |
+| F15 | Curriculum generalises to Tiny-ImageNet: ETS +2.28pp over static (69.16% vs 66.88%) | Dataset generalisation confirmed | 14 |
+| F16 | Curriculum compresses Tiny-ImageNet train-test gap by 21.82pp (36.53pp → 14.71pp) | Regularisation effect on harder dataset | 14 |
+| F17 | T2→T3 tier dip replicates on Tiny-ImageNet (−4.41pp at ep46→50) — confirms dip is a curriculum property, not CIFAR-100 artefact | Cross-dataset dip consistency | 14 |
