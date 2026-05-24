@@ -1,8 +1,8 @@
 # Thesis Results — WideResNet-28-10 / CIFAR-100
 
-**Generated:** 2026-05-17 &nbsp;|&nbsp; **Model:** WideResNet-28-10 &nbsp;|&nbsp; **Dataset:** CIFAR-100 &nbsp;|&nbsp; **val_split:** 0.1
+Model: WideResNet-28-10  |  Dataset: CIFAR-100  |  val_split: 0.1  |  Updated: 2026-05-24
 
-> 🔶 = partial (seeds still running) &nbsp;|&nbsp; — = not yet run
+> partial = some seeds still running  |  — = not yet run
 
 ---
 
@@ -35,11 +35,7 @@
 | Tiered ETS | 81.35% | 81.25% | 81.35% | 81.79% | **81.23%** | **81.39% ± 0.23%** | 133 min |
 | Tiered LPS | 81.36% | 81.43% | 81.27% | **81.34%** | **81.79%** | **81.44% ± 0.20%** | 135 min |
 
-> **Finding 1 — Curriculum advantage with aggressive ops:** When the 19-op pool introduces ops with significant information loss (blur, solarize, posterize, invert), progressive curriculum scheduling (ETS/LPS) outperforms the static baseline by **+3.89pp** (81.32% vs 77.43%). This gain is absent with the 14-op pool (Table 1, Δ = 0.01pp), confirming that curriculum benefit scales with augmentation difficulty.
->
-> **Finding 2 — ETS vs LPS statistical equivalence:** ETS (81.39% ± 0.23%) and LPS (81.44% ± 0.20%) are statistically indistinguishable (Δ = 0.05pp, well within one standard deviation of either method), indicating that the specific tier-advancement signal — fixed epoch thresholds vs adaptive loss plateaus — does not significantly affect final accuracy when both methods are given the same augmentation pool.
->
-> **Finding 3 — EGS vs ETS gap:** EGS v2 (80.01% ± 0.27%) trails ETS by 1.31pp. This gap is attributed to the per-sample scheduling design: EGS reaches full Tier 3 exposure only at epoch ~89 on average, leaving only ~11 epochs of maximum augmentation, compared to 55 epochs for ETS. The per-sample adaptivity introduces scheduling overhead without proportional accuracy benefit at 100 epochs.
+> ETS/LPS gain (+3.89pp over Static) appears only with the 19-op pool; absent with 14-op pool (Δ = 0.01pp). ETS and LPS are statistically equivalent (Δ = 0.05pp). EGS v2 trails ETS by ~1.6pp — per-sample scheduling delays full Tier 3 exposure to epoch ~89, leaving fewer epochs at maximum augmentation.
 
 ---
 
@@ -53,7 +49,7 @@
 | **ETS vs Static** | +0.34 pp | **+3.56 pp** | |
 | **LPS vs Static** | −0.02 pp | **+3.57 pp** | |
 
-> **Core thesis finding — curriculum robustness scales with augmentation difficulty:** Expanding the pool from 14 to 19 ops causes static mixing to drop 3.71pp (81.50% → 77.79%), while ETS drops only 0.49pp (81.84% → 81.35%) and LPS drops only 0.12pp (81.48% → 81.36%). The curriculum's protective mechanism — deferring high-distortion ops to Tier 3 when the model has already acquired stable low-level representations — becomes decisive precisely when the ops are most likely to destabilise early training. The advantage of curriculum over static scheduling is near-zero when all ops are geometrically mild (14-op pool), but grows to +3.57pp when the pool includes perceptually destructive transformations (19-op pool).
+> Expanding from 14 to 19 ops drops Static by 3.71pp but ETS by only 0.49pp and LPS by only 0.12pp. The curriculum's advantage over static scheduling is near-zero with benign 14-op pool, and grows to +3.57pp when the pool includes high-distortion ops.
 
 ---
 
@@ -251,7 +247,7 @@
 
 | Experiment | Seeds Remaining | Note |
 |:---|:---:|:---|
-| tiered_egs (19-op) | — | ✅ Complete — 79.59% ± 0.08% |
+| tiered_egs (19-op) | — | done — Complete — 79.59% ± 0.08% |
 | tiered_ets (14-op, 150ep) | 42 | Optional — 100ep s42 = 81.84% already strong |
 
 ---
@@ -291,13 +287,13 @@
 | Tiered ETS | **80.41%** | **81.32%** *(mean)* | −0.91pp | **+3.79pp** | 68 min |
 | Tiered LPS | **80.50%** | **81.35%** *(mean)* | −0.85pp | **+3.88pp** | 68 min |
 
-> **Finding 1 — Curriculum benefit is architecture-agnostic:** ETS and LPS outperform Static Mixing by +3.79pp and +3.88pp respectively on ResNet-50, nearly identical to their WideResNet advantages (+3.89pp each, Δ ≤ 0.10pp). Progressive augmentation scheduling provides consistent gains regardless of backbone capacity.
+> **Curriculum benefit is architecture-agnostic:** ETS and LPS outperform Static Mixing by +3.79pp and +3.88pp respectively on ResNet-50, nearly identical to their WideResNet advantages (+3.89pp each, Δ ≤ 0.10pp). Progressive augmentation scheduling provides consistent gains regardless of backbone capacity.
 >
-> **Finding 2 — ETS vs LPS equivalence holds across architectures:** ETS (80.41%) and LPS (80.50%) are statistically equivalent on ResNet-50 (Δ = 0.09pp), replicating the WideResNet result (Δ = 0.03pp). LPS transitions earlier (T2→T3 at epoch 36 vs ETS epoch 46), but extra T3 duration does not translate to accuracy improvement.
+> **ETS vs LPS equivalence holds across architectures:** ETS (80.41%) and LPS (80.50%) are statistically equivalent on ResNet-50 (Δ = 0.09pp), replicating the WideResNet result (Δ = 0.03pp). LPS transitions earlier (T2→T3 at epoch 36 vs ETS epoch 46), but extra T3 duration does not translate to accuracy improvement.
 >
-> **Finding 3 — EGS-ETS gap is consistent across architectures:** EGS v2 trails ETS by 1.31pp on both ResNet-50 (79.10% vs 80.41%) and WideResNet (80.01% vs 81.32%). The identical gap confirms the EGS limitation is structural — per-sample scheduling delays full T3 exposure — not architecture-specific. EGS is also 2.2× slower on ResNet-50 (151 min vs 68 min) due to entropy computation overhead.
+> **EGS-ETS gap is consistent across architectures:** EGS v2 trails ETS by 1.31pp on both ResNet-50 (79.10% vs 80.41%) and WideResNet (80.01% vs 81.32%). The identical gap confirms the EGS limitation is structural — per-sample scheduling delays full T3 exposure — not architecture-specific. EGS is also 2.2× slower on ResNet-50 (151 min vs 68 min) due to entropy computation overhead.
 >
-> **Finding 4 — Augmentation closes the capacity gap:** Without augmentation, ResNet-50 trails WideResNet by 7.56pp. With curriculum augmentation (ETS/LPS), the gap narrows to 0.85–0.91pp — augmentation disproportionately benefits lower-capacity models by providing the implicit regularisation that wider networks achieve through their architecture.
+> **Augmentation closes the capacity gap:** Without augmentation, ResNet-50 trails WideResNet by 7.56pp. With curriculum augmentation (ETS/LPS), the gap narrows to 0.85–0.91pp — augmentation disproportionately benefits lower-capacity models by providing the implicit regularisation that wider networks achieve through their architecture.
 
 ---
 
@@ -326,18 +322,18 @@
 | Static Mixing | 19 all | 19 all | 100% | 100% | from ep 1 | 77.43% | −3.92pp |
 | Reverse ETS (Hard→Easy) | 19 all | 4 easy | 100% | 40% | T3 only | 78.17% | −3.18pp |
 | Static No Mixing | 19 all | 19 all | 100% | 100% | none | 78.23% | −3.12pp |
-| Hard from Epoch 1 | — | 19 all | — | 100% | from ep 1 | 📋 | — |
+| Hard from Epoch 1 | — | 19 all | — | 100% | from ep 1 | pending | — |
 
-> **Finding 1 — Ordering matters (FIT Q105):** Reverse curriculum (Hard→Easy) achieves 78.17%, which is **3.18pp below forward ETS** and only 0.74pp above static mixing (77.43%). Beginning training with all 19 ops at full strength prevents stable feature acquisition (train acc 25.72% at ep10 vs ~57% forward). Reversed curriculum provides almost no benefit over a flat static policy.
+> **Ordering matters (FIT Q105):** Reverse curriculum (Hard→Easy) achieves 78.17%, which is **3.18pp below forward ETS** and only 0.74pp above static mixing (77.43%). Beginning training with all 19 ops at full strength prevents stable feature acquisition (train acc 25.72% at ep10 vs ~57% forward). Reversed curriculum provides almost no benefit over a flat static policy.
 >
-> **Finding 2 — Mixing contributes +2.06pp; curriculum ordering contributes +1.86pp independently:**
+> **Mixing contributes +2.06pp; curriculum ordering contributes +1.86pp independently:**
 > The 3.89pp total ETS advantage over static mixing decomposes as:
 > - ETS + mixing (81.35%) − ETS no-mix (79.29%) = **+2.06pp from delayed CutMix/MixUp**
 > - ETS no-mix (79.29%) − Static + mixing (77.43%) = **+1.86pp from curriculum ordering alone**
 >
 > Critically, the curriculum structure outperforms static mixing **even without any mixing** (+1.86pp). The train accuracy of 99.98% under ETS no-mix confirms that CutMix/MixUp is the primary regulariser — without it the model memorises the training set nearly perfectly (20.69pp train-test gap vs ~15pp with mixing). Both components — curriculum ordering and delayed mixing — are independently beneficial and additive.
 >
-> **Finding 3 — CutMix is the dominant mixing strategy:**
+> **CutMix is the dominant mixing strategy:**
 >
 > | Mixing | Test Top-1 | Δ vs no-mix |
 > |:---|:---:|:---:|
@@ -348,7 +344,7 @@
 >
 > CutMix alone (+2.45pp) outperforms both combined (+2.06pp) and MixUp alone (+1.16pp). Combining CutMix with MixUp slightly degrades vs CutMix alone (−0.39pp), indicating mild interference. MixUp's marginal contribution when added to CutMix is negative. **CutMix is the recommended mixing strategy for this setting.**
 >
-> **Finding 4 — Complete 2×2 decomposition (curriculum × mixing):**
+> **Complete 2×2 decomposition (curriculum × mixing):**
 >
 > | | No Mixing | CutMix (best) | Mixing effect |
 > |:---|:---:|:---:|:---:|
@@ -379,19 +375,19 @@
 
 > † Static Mixing train accuracy (55.09%) is lower than test accuracy (66.88%) because CutMix applied from epoch 1 mixes training labels — the model is scored against soft mixed labels during training, not against clean class labels. This artificially depresses reported train accuracy and is not an indication of underfitting; it is a known artefact of CutMix applied from epoch 1.
 
-> **Finding 1 — Curriculum advantage generalises to Tiny-ImageNet:** ETS achieves 69.16% on Tiny-ImageNet vs static mixing at 66.88%, an advantage of **+2.28pp**. This matches the direction of the CIFAR-100 result (+3.89pp), confirming that the progressive curriculum mechanism generalises beyond CIFAR-100 to a harder 200-class dataset. The slightly smaller gap (+2.28pp vs +3.89pp) is consistent with Tiny-ImageNet's larger training set (90,000 vs 45,000 images) — more data reduces the marginal benefit of curriculum-based ordering because the model encounters sufficient within-class variety even without a curriculum.
+> **Curriculum advantage generalises to Tiny-ImageNet:** ETS achieves 69.16% on Tiny-ImageNet vs static mixing at 66.88%, an advantage of **+2.28pp**. This matches the direction of the CIFAR-100 result (+3.89pp), confirming that the progressive curriculum mechanism generalises beyond CIFAR-100 to a harder 200-class dataset. The slightly smaller gap (+2.28pp vs +3.89pp) is consistent with Tiny-ImageNet's larger training set (90,000 vs 45,000 images) — more data reduces the marginal benefit of curriculum-based ordering because the model encounters sufficient within-class variety even without a curriculum.
 >
-> **Finding 2 — Curriculum provides strong regularisation:** Without augmentation, the train-test gap is 36.53pp. ETS reduces this to 14.71pp — a compression of 21.82pp. This regularisation effect is proportionally similar to CIFAR-100 (no-aug: 27.12pp → ETS ~0.01pp val-test gap with train acc ~80%), confirming that curriculum augmentation is an effective regulariser across dataset scales.
+> **Curriculum provides strong regularisation:** Without augmentation, the train-test gap is 36.53pp. ETS reduces this to 14.71pp — a compression of 21.82pp. This regularisation effect is proportionally similar to CIFAR-100 (no-aug: 27.12pp → ETS ~0.01pp val-test gap with train acc ~80%), confirming that curriculum augmentation is an effective regulariser across dataset scales.
 >
-> **Finding 3 — Static Mixing CutMix effect:** The negative train-test gap for static mixing (train 55.09% < test 66.88%) is an artefact of CutMix training labels making training accuracy appear artificially low. However, it also reflects the disruption that aggressive mixing causes to early training: the model has to simultaneously learn from perceptually altered images and mixed labels from epoch 1, resulting in slower early convergence compared to ETS which defers mixing to Tier 3 (epoch 46).
+> **Static Mixing CutMix effect:** The negative train-test gap for static mixing (train 55.09% < test 66.88%) is an artefact of CutMix training labels making training accuracy appear artificially low. However, it also reflects the disruption that aggressive mixing causes to early training: the model has to simultaneously learn from perceptually altered images and mixed labels from epoch 1, resulting in slower early convergence compared to ETS which defers mixing to Tier 3 (epoch 46).
 >
-> **Finding 4 — Tier transition dip on Tiny-ImageNet:** ETS exhibited a −4.41pp accuracy dip at the T2→T3 transition (47.42% at ep46 → 43.01% at ep50, recovering by ep55). This is consistent with the same tier-transition dip observed on CIFAR-100, validating that the dip is an inherent feature of the curriculum mechanism on harder ops — not an artefact of the specific dataset or the number of classes.
+> **Tier transition dip on Tiny-ImageNet:** ETS exhibited a −4.41pp accuracy dip at the T2→T3 transition (47.42% at ep46 → 43.01% at ep50, recovering by ep55). This is consistent with the same tier-transition dip observed on CIFAR-100, validating that the dip is an inherent feature of the curriculum mechanism on harder ops — not an artefact of the specific dataset or the number of classes.
 >
-> **Finding 5 — LPS edges ETS on Tiny-ImageNet (+0.31pp):** LPS achieves 69.47% vs ETS 69.16%, consistent with CIFAR-100 where LPS also marginally outperformed ETS (81.35% vs 81.32%). The difference is within seed variance and not statistically significant with a single seed, but the direction is consistent across both datasets.
+> **LPS edges ETS on Tiny-ImageNet (+0.31pp):** LPS achieves 69.47% vs ETS 69.16%, consistent with CIFAR-100 where LPS also marginally outperformed ETS (81.35% vs 81.32%). The difference is within seed variance and not statistically significant with a single seed, but the direction is consistent across both datasets.
 >
-> **Finding 6 — LPS adaptive transitions avoid the tier-transition dip:** LPS advanced T2→T3 at epoch 39 (vs ETS fixed at epoch 46), and val accuracy *improved* at the transition (44.60% ep35 → 47.18% ep40) — no dip observed. This contrasts sharply with ETS's −4.41pp dip. The adaptive scheduler advanced only when the model was genuinely ready, eliminating the disruption caused by forcing tier advancement at a fixed epoch regardless of model state.
+> **LPS adaptive transitions avoid the tier-transition dip:** LPS advanced T2→T3 at epoch 39 (vs ETS fixed at epoch 46), and val accuracy *improved* at the transition (44.60% ep35 → 47.18% ep40) — no dip observed. This contrasts sharply with ETS's −4.41pp dip. The adaptive scheduler advanced only when the model was genuinely ready, eliminating the disruption caused by forcing tier advancement at a fixed epoch regardless of model state.
 >
-> **Finding 7 — LPS tier transitions on Tiny-ImageNet:** T1→T2 at epoch 19 (2 epochs earlier than ETS fixed ep21), T2→T3 at epoch 39 (7 epochs earlier than ETS fixed ep46). The earlier T3 advancement gave LPS 61 epochs in Tier 3 vs 54 for ETS, contributing to its slight accuracy advantage.
+> **LPS tier transitions on Tiny-ImageNet:** T1→T2 at epoch 19 (2 epochs earlier than ETS fixed ep21), T2→T3 at epoch 39 (7 epochs earlier than ETS fixed ep46). The earlier T3 advancement gave LPS 61 epochs in Tier 3 vs 54 for ETS, contributing to its slight accuracy advantage.
 
 ---
 
@@ -429,13 +425,13 @@
 | Tiered ETS | 81.35% | 2.92 | 31.44 | 10.75 | +1.96× |
 | **Tiered LPS** | **81.36%** | **2.85** | **30.87** | **10.82** | **+1.97×** |
 
-> **Finding 1 — Curriculum nearly doubles representational quality:** LPS achieves a separation ratio of 10.82 vs 5.49 for No Augmentation — a 97% improvement. This demonstrates that curriculum augmentation improves the *geometric quality* of learned representations, not just final accuracy. The clusters of same-class images in feature space are both tighter (lower intra-class variance) and further apart (higher inter-class margin) under curriculum training.
+> **Curriculum nearly doubles representational quality:** LPS achieves a separation ratio of 10.82 vs 5.49 for No Augmentation — a 97% improvement. This demonstrates that curriculum augmentation improves the *geometric quality* of learned representations, not just final accuracy. The clusters of same-class images in feature space are both tighter (lower intra-class variance) and further apart (higher inter-class margin) under curriculum training.
 >
-> **Finding 2 — Separation ratio tracks accuracy across all methods:** The ordering Static (8.32) < EGS (9.97) < ETS (10.75) ≈ LPS (10.82) mirrors the accuracy ranking (77.43% < 79.83% < 81.35% ≈ 81.36%). This alignment provides geometric evidence that the accuracy improvements are grounded in better feature learning, not decision boundary tuning.
+> **Separation ratio tracks accuracy across all methods:** The ordering Static (8.32) < EGS (9.97) < ETS (10.75) ≈ LPS (10.82) mirrors the accuracy ranking (77.43% < 79.83% < 81.35% ≈ 81.36%). This alignment provides geometric evidence that the accuracy improvements are grounded in better feature learning, not decision boundary tuning.
 >
-> **Finding 3 — EGS has widest class separation (Inter=32.25) but looser clusters:** EGS pushes class centres furthest apart yet has worse intra-class cohesion (3.23 vs 2.85 for LPS), explaining its lower ratio (9.97) and 1.52pp accuracy deficit. The per-sample scheduling delays full Tier 3 exposure, giving the model fewer epochs to tighten within-class representations.
+> **EGS has widest class separation (Inter=32.25) but looser clusters:** EGS pushes class centres furthest apart yet has worse intra-class cohesion (3.23 vs 2.85 for LPS), explaining its lower ratio (9.97) and 1.52pp accuracy deficit. The per-sample scheduling delays full Tier 3 exposure, giving the model fewer epochs to tighten within-class representations.
 >
-> **Finding 4 — Static Mixing vs curriculum representational gap:** Even with CutMix/MixUp from epoch 1, Static Mixing achieves a separation ratio of only 8.32 — well below LPS/ETS (10.82/10.75). The 2.5-point gap in separation ratio corresponds to the 4.01pp accuracy gap, confirming that forcing aggressive augmentation from the start prevents stable feature formation, and that the curriculum's value is specifically in *when* hard augmentation is introduced.
+> **Static Mixing vs curriculum representational gap:** Even with CutMix/MixUp from epoch 1, Static Mixing achieves a separation ratio of only 8.32 — well below LPS/ETS (10.82/10.75). The 2.5-point gap in separation ratio corresponds to the 4.01pp accuracy gap, confirming that forcing aggressive augmentation from the start prevents stable feature formation, and that the curriculum's value is specifically in *when* hard augmentation is introduced.
 
 ---
 
@@ -467,11 +463,11 @@
 > Significance: *** p<0.001 · ** p<0.01 · * p<0.05 · ns = not significant
 > Cohen's d: small ≥0.2 · medium ≥0.5 · large ≥0.8
 
-> **Finding 1 — All curriculum methods significantly outperform static mixing:** ETS (d=9.83), LPS (d=10.12), and EGS (d=4.57) all achieve p<0.001 against Static Mixing. Cohen's d values of 9–10 are extraordinarily large — "large" effect begins at 0.8. These differences cannot be attributed to random seed variation.
+> **All curriculum methods significantly outperform static mixing:** ETS (d=9.83), LPS (d=10.12), and EGS (d=4.57) all achieve p<0.001 against Static Mixing. Cohen's d values of 9–10 are extraordinarily large — "large" effect begins at 0.8. These differences cannot be attributed to random seed variation.
 >
-> **Finding 2 — ETS and LPS are statistically indistinguishable:** Δ=−0.04pp, p=0.757, d=−0.20. The scheduling mechanism (fixed epoch thresholds vs adaptive loss plateaus) does not significantly affect final accuracy. The curriculum structure — progressive tier exposure — is the critical factor, not the advancement signal.
+> **ETS and LPS are statistically indistinguishable:** Δ=−0.04pp, p=0.757, d=−0.20. The scheduling mechanism (fixed epoch thresholds vs adaptive loss plateaus) does not significantly affect final accuracy. The curriculum structure — progressive tier exposure — is the critical factor, not the advancement signal.
 >
-> **Finding 3 — EGS is significantly weaker than ETS/LPS:** ETS vs EGS: p=0.0003, d=4.69. LPS vs EGS: p=0.0003, d=4.92. The 1.65–1.69pp gap is statistically confirmed. Per-sample scheduling delays full Tier 3 exposure, resulting in measurably worse representations and accuracy.
+> **EGS is significantly weaker than ETS/LPS:** ETS vs EGS: p=0.0003, d=4.69. LPS vs EGS: p=0.0003, d=4.92. The 1.65–1.69pp gap is statistically confirmed. Per-sample scheduling delays full Tier 3 exposure, resulting in measurably worse representations and accuracy.
 
 ---
 
@@ -518,14 +514,60 @@
 | spatter | 55.38 | 74.72 | 68.93 | 70.12 | 75.52 |
 | **Mean** | **45.58** | **66.27** | **51.81** | **52.13** | **66.90** |
 
-> **Finding 1 — Clean accuracy vs corruption robustness trade-off:** ETS and LPS achieve the highest clean accuracy (+3.84pp over Static Mixing) but exhibit substantially lower CIFAR-100-C robustness (51.81–52.13% vs 66.27%). EGS marginally outperforms Static Mixing on corrupted data (66.90% vs 66.27%, +0.63pp) while also exceeding it on clean accuracy (+2.15pp). This reveals a trade-off inherent to late-tier mixing curriculum designs.
+> **Clean accuracy vs corruption robustness trade-off:** ETS and LPS achieve the highest clean accuracy (+3.84pp over Static Mixing) but exhibit substantially lower CIFAR-100-C robustness (51.81–52.13% vs 66.27%). EGS marginally outperforms Static Mixing on corrupted data (66.90% vs 66.27%, +0.63pp) while also exceeding it on clean accuracy (+2.15pp). This reveals a trade-off inherent to late-tier mixing curriculum designs.
 >
-> **Finding 2 — Noise corruptions expose the mixing timing effect:** On noise corruptions (gaussian, shot, impulse, speckle), ETS (21–33%) performs nearly identically to No Augmentation (21–31%), while Static Mixing (49–65%) and EGS (47–63%) are dramatically better. Noise is absent from all training tiers, so robustness to it is driven entirely by CutMix/MixUp training. Static Mixing and EGS apply mixing from epoch 1 and ~epoch 30 respectively, building noise-robust features. ETS/LPS restrict mixing to Tier 3 (epoch 46+), providing insufficient exposure.
+> **Noise corruptions expose the mixing timing effect:** On noise corruptions (gaussian, shot, impulse, speckle), ETS (21–33%) performs nearly identically to No Augmentation (21–31%), while Static Mixing (49–65%) and EGS (47–63%) are dramatically better. Noise is absent from all training tiers, so robustness to it is driven entirely by CutMix/MixUp training. Static Mixing and EGS apply mixing from epoch 1 and ~epoch 30 respectively, building noise-robust features. ETS/LPS restrict mixing to Tier 3 (epoch 46+), providing insufficient exposure.
 >
-> **Finding 3 — Curriculum augmentation types improve where they are present:** ETS/LPS show clear improvement over No Augmentation on corruptions that overlap with their training ops: brightness (+8.24pp), fog (+9.25pp), elastic_transform (+9.29pp), snow (+9.06pp). Where ops are absent (noise), no improvement is observed. This confirms that the robustness gap is caused by mixing timing, not by augmentation op selection.
+> **Curriculum augmentation types improve where they are present:** ETS/LPS show clear improvement over No Augmentation on corruptions that overlap with their training ops: brightness (+8.24pp), fog (+9.25pp), elastic_transform (+9.29pp), snow (+9.06pp). Where ops are absent (noise), no improvement is observed. This confirms that the robustness gap is caused by mixing timing, not by augmentation op selection.
 >
-> **Finding 4 — EGS's gradual mixing builds corruption robustness:** EGS promotes samples to Tier 3 (with mixing) progressively from around epoch 30, giving the network ~70 epochs of mixing exposure for the earliest-promoted samples — compared to ETS's fixed 54 epochs and Static's full 100 epochs. This earlier average mixing exposure explains EGS's strong corruption robustness (66.90%) despite its per-sample scheduling design.
+> **EGS's gradual mixing builds corruption robustness:** EGS promotes samples to Tier 3 (with mixing) progressively from around epoch 30, giving the network ~70 epochs of mixing exposure for the earliest-promoted samples — compared to ETS's fixed 54 epochs and Static's full 100 epochs. This earlier average mixing exposure explains EGS's strong corruption robustness (66.90%) despite its per-sample scheduling design.
 >
 > **Limitation and future work:** The clean accuracy vs robustness trade-off could be resolved by enabling CutMix/MixUp from Tier 2 (epoch ~20) rather than Tier 3. This would give ETS/LPS 80 epochs of mixing exposure, potentially achieving both high clean accuracy and strong corruption robustness. Testing this modification is left as future work.
 
 ---
+
+## Table 21 — Per-Class Accuracy: Top-10 and Bottom-10 Classes (seed 42, 19-op, 100ep)
+
+> Generated by: `python analysis/perclass_accuracy.py`
+> Status: partial — No Augmentation and ETS available locally; Static/LPS/EGS pending cluster run.
+
+### Bottom-10 classes (hardest) — consistent across methods
+
+| Class | No Aug | Static | ETS | LPS | EGS |
+|:---|:---:|:---:|:---:|:---:|:---:|
+| otter | 38.0% | — | 40.0% | — | — |
+| seal | 40.0% | — | 51.0% | — | — |
+| girl | 52.0% | — | 40.0% | — | — |
+| boy | 49.0% | — | 45.0% | — | — |
+| bear | 47.0% | — | 59.0% | — | — |
+| shrew | 52.0% | — | 60.0% | — | — |
+| woman | 47.0% | — | — | — | — |
+| bowl | 52.0% | — | — | — | — |
+| beaver | — | — | 53.0% | — | — |
+| forest | — | — | 55.0% | — | — |
+
+> Hard classes fall into two groups: fine-grained aquatic/semi-aquatic animals (otter, seal, beaver) and people classes (girl, boy, woman). Both suffer from high inter-class visual similarity that augmentation does not resolve. The "girl" class regresses from 52% (No Aug) to 40% (ETS) — CutMix/MixUp label mixing across people classes (girl/boy/woman) appears to compound the confusion rather than reduce it.
+
+### Top-10 classes (easiest) — No Augmentation vs ETS
+
+| Rank | No Aug class | No Aug acc | ETS class | ETS acc |
+|:---:|:---|:---:|:---|:---:|
+| 1 | motorcycle | 95.0% | sunflower | 98.0% |
+| 2 | road | 94.0% | orange | 97.0% |
+| 3 | bicycle | 93.0% | road | 97.0% |
+| 4 | orange | 93.0% | pickup_truck | 96.0% |
+| 5 | castle | 90.0% | motorcycle | 95.0% |
+| 6 | palm_tree | 90.0% | wardrobe | 94.0% |
+| 7 | apple | 89.0% | apple | 93.0% |
+| 8 | wardrobe | 89.0% | bicycle | 93.0% |
+| 9 | skyscraper | 88.0% | palm_tree | 93.0% |
+| 10 | mountain | 87.0% | chair | 92.0% |
+
+> Easy classes are visually distinctive objects with consistent appearance: vehicles, fruits, man-made structures. These are stable across methods. ETS raises the ceiling further (sunflower 98%, orange 97%) and adds new entries (pickup_truck 96%, chair 92%), benefiting from the richer 19-op pool.
+
+### Class-level gain table: Static → ETS/LPS/EGS
+
+> pending — fill after cluster run of `python analysis/perclass_accuracy.py`
+
+---
+

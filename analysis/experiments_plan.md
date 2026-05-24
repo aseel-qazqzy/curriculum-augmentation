@@ -1,52 +1,52 @@
 # Experiments Plan
 
-**Generated:** 2026-05-17 &nbsp;|&nbsp; **Sources:** FIT presentation · FIT Q&A (105 questions) · session discussions
+Sources: FIT presentation, FIT Q&A (105 questions), session discussions  |  Updated: 2026-05-24
 
 ---
 
-### Legend
+### Abbreviations
 
-| Symbol | Meaning |
+| Short | Meaning |
 |:---|:---|
-| **E / L / G** | ETS · LPS · EGS |
-| **W / R** | WideResNet-28-10 · ResNet-50 |
-| **3 / 1** | Full 3-seed sweep · Single ablation seed |
-| ✅ | Done |
-| 🔶 | Partial |
-| 📋 | TODO |
-| 🔍 | Analysis only — no new training |
+| E / L / G | ETS / LPS / EGS |
+| W / R | WideResNet-28-10 / ResNet-50 |
+| 3 / 1 | 3-seed sweep / single seed |
+| done | experiment complete |
+| partial | some seeds done, others pending |
+| pending | not yet run |
+| (required) | minimum viable thesis — needed for defense |
 
 ---
 
 ## Group A — Core Experiments
 
-> **MVT** = Minimum Viable Thesis — required for defense
+> MVT (required) = Minimum Viable Thesis — needed for defense
 
 | Experiment | Apply | Seeds | Arch | Pool | Dataset | Status |
 |:---|:---:|:---:|:---:|:---:|:---:|:---:|
-| No Augmentation | — | 1 | W | — | CIFAR-100 | ✅ |
-| Static Mixing (14-op) | — | 3 | W | 14 | CIFAR-100 | ✅ |
-| Static Mixing (19-op) | — | 3 | W | 19 | CIFAR-100 | ✅ |
-| Tiered ETS (14-op) | E | 3 | W | 14 | CIFAR-100 | ✅ |
-| Tiered ETS (19-op) | E | 3 | W | 19 | CIFAR-100 | ✅ |
-| Tiered LPS (14-op) | L | 3 | W | 14 | CIFAR-100 | ✅ |
-| Tiered LPS (19-op) | L | 3 | W | 19 | CIFAR-100 | ✅ |
-| Tiered EGS (14-op) | G | 3 | W | 14 | CIFAR-100 | ✅ |
-| Tiered EGS (19-op, old code) | G | 3 | W | 19 | CIFAR-100 | ✅ 79.59% ± 0.08% |
-| Tiered EGS (19-op, _TIER_OPS fix, thresh050, 100ep) | G | 1 | W | 19 | CIFAR-100 | ✅ 80.12% s42 — best ep99, needs 150ep |
-| Tiered EGS (19-op, _TIER_OPS fix, thresh050, 150ep) | G | 3 | W | 19 | CIFAR-100 | 📋 run next |
-| EGS opt Config 3 (old code, s42) | G | 1 | W | 19 | CIFAR-100 | ✅ 80.68% — fixed epoch, old ops |
-| ETS 150 epochs (14-op) | E | 3 | W | 14 | CIFAR-100 | 🔶 |
-| **RandAugment N=2, M=9** ⚠️ MVT | — | 1 | W | — | CIFAR-100 | 📋 |
-| **Random Aug (same pool, no ordering)** ⚠️ MVT | — | 1 | W | 19 | CIFAR-100 | 📋 |
-| **TrivialAugment** ⭐ baseline | — | 1 | W | — | CIFAR-100 | 📋 needs implementation check |
-| **AutoAugment (CIFAR-10 policy)** ⭐ baseline | — | 1 | W | — | CIFAR-100 | 📋 needs implementation check |
-| **Static Mixing (19-op) — seeds 3407 + 1024** ⭐ stat | — | 2 | W | 19 | CIFAR-100 | ✅ s3407=78.17% · s1024=77.54% · 5-seed mean=77.60% ± 0.50% |
-| **Tiered ETS (19-op) — seeds 3407 + 1024** ⭐ stat | E | 2 | W | 19 | CIFAR-100 | ✅ s3407=81.79% · s1024=81.23% · 5-seed mean=81.39% ± 0.23% |
-| **Tiered LPS (19-op) — seeds 3407 + 1024** ⭐ stat | L | 2 | W | 19 | CIFAR-100 | ✅ s3407=81.34% · s1024=81.79% · 5-seed mean=81.44% ± 0.20% |
-| **Tiered EGS v2 (19-op) — seeds 3407 + 1024** ⭐ stat | G | 2 | W | 19 | CIFAR-100 | ✅ s3407=79.21% · s1024=79.49% · 5-seed mean=79.75% ± 0.44% |
+| No Augmentation | — | 1 | W | — | CIFAR-100 | done |
+| Static Mixing (14-op) | — | 3 | W | 14 | CIFAR-100 | done |
+| Static Mixing (19-op) | — | 3 | W | 19 | CIFAR-100 | done |
+| Tiered ETS (14-op) | E | 3 | W | 14 | CIFAR-100 | done |
+| Tiered ETS (19-op) | E | 3 | W | 19 | CIFAR-100 | done |
+| Tiered LPS (14-op) | L | 3 | W | 14 | CIFAR-100 | done |
+| Tiered LPS (19-op) | L | 3 | W | 19 | CIFAR-100 | done |
+| Tiered EGS (14-op) | G | 3 | W | 14 | CIFAR-100 | done |
+| Tiered EGS (19-op, old code) | G | 3 | W | 19 | CIFAR-100 | done — 79.59% ± 0.08% |
+| Tiered EGS (19-op, _TIER_OPS fix, thresh050, 100ep) | G | 1 | W | 19 | CIFAR-100 | done — 80.12% s42 — best ep99, needs 150ep |
+| Tiered EGS (19-op, _TIER_OPS fix, thresh050, 150ep) | G | 3 | W | 19 | CIFAR-100 | pending — run next |
+| EGS opt Config 3 (old code, s42) | G | 1 | W | 19 | CIFAR-100 | done — 80.68% — fixed epoch, old ops |
+| ETS 150 epochs (14-op) | E | 3 | W | 14 | CIFAR-100 | partial |
+| **RandAugment N=2, M=9** (required) | — | 1 | W | — | CIFAR-100 | pending |
+| **Random Aug (same pool, no ordering)** (required) | — | 1 | W | 19 | CIFAR-100 | pending |
+| **TrivialAugment** baseline | — | 1 | W | — | CIFAR-100 | pending — needs implementation check |
+| **AutoAugment (CIFAR-10 policy)** baseline | — | 1 | W | — | CIFAR-100 | pending — needs implementation check |
+| **Static Mixing (19-op) — seeds 3407 + 1024** stat | — | 2 | W | 19 | CIFAR-100 | done — s3407=78.17% · s1024=77.54% · 5-seed mean=77.60% ± 0.50% |
+| **Tiered ETS (19-op) — seeds 3407 + 1024** stat | E | 2 | W | 19 | CIFAR-100 | done — s3407=81.79% · s1024=81.23% · 5-seed mean=81.39% ± 0.23% |
+| **Tiered LPS (19-op) — seeds 3407 + 1024** stat | L | 2 | W | 19 | CIFAR-100 | done — s3407=81.34% · s1024=81.79% · 5-seed mean=81.44% ± 0.20% |
+| **Tiered EGS v2 (19-op) — seeds 3407 + 1024** stat | G | 2 | W | 19 | CIFAR-100 | done — s3407=79.21% · s1024=79.49% · 5-seed mean=79.75% ± 0.44% |
 
-> ⭐ stat = extends 3-seed sweep to n=5, eliminating the small-sample limitation in t-test (Cohen's d=10 at n=3 is already convincing; n=5 removes reviewer objection entirely).
+> stat = extends 3-seed sweep to n=5 for statistical testing.
 
 **Answers:** Does the proposed curriculum outperform published baselines (RandAugment)? Is the improvement from ordering or just the ops chosen?
 
@@ -65,7 +65,7 @@
 | TrivialAugment | 82.5% | 200 | Müller & Hutter, 2021 |
 | AugMix | 80.9% | 200 | Hendrycks et al., 2020 |
 
-> **Your ETS at 100 epochs: 81.39% ± 0.23%** — competitive with AugMix at 200ep, within 2pp of AutoAugment/TrivialAugment at double the epochs.
+> ETS at 100 epochs: 81.39% ± 0.23%. AugMix at 200ep: 80.9%. AutoAugment/TrivialAugment at 200ep: 82.5–82.9%.
 
 ```bash
 # Extra seeds — Static Mixing
@@ -119,10 +119,10 @@ python -m experiments.train_baseline --dataset cifar100 --model wideresnet \
 
 | Experiment | Apply | Seeds | Arch | Pool | Dataset | Status |
 |:---|:---:|:---:|:---:|:---:|:---:|:---:|
-| Static — MultiStep | — | 1 | W | 19 | CIFAR-100 | 📋 |
-| ETS — MultiStep | E | 1 | W | 19 | CIFAR-100 | 📋 |
-| LPS — MultiStep | L | 1 | W | 19 | CIFAR-100 | 📋 |
-| ETS — Cosine WarmRestart | E | 1 | W | 19 | CIFAR-100 | ✅ |
+| Static — MultiStep | — | 1 | W | 19 | CIFAR-100 | pending |
+| ETS — MultiStep | E | 1 | W | 19 | CIFAR-100 | pending |
+| LPS — MultiStep | L | 1 | W | 19 | CIFAR-100 | pending |
+| ETS — Cosine WarmRestart | E | 1 | W | 19 | CIFAR-100 | done |
 
 **Answers:** Does the LR scheduler choice affect the curriculum benefit? Is cosine better than the traditional MultiStep used in WideResNet papers?
 
@@ -138,11 +138,11 @@ python -m experiments.train_baseline --dataset cifar100 --model wideresnet \
 
 | Experiment | Apply | Seeds | Arch | Pool | Dataset | Status |
 |:---|:---:|:---:|:---:|:---:|:---:|:---:|
-| **ETS — No mixing** ⚠️ MVT | E | 1 | W | 19 | CIFAR-100 | ✅ 79.29% s42 · 137 min |
-| ETS — CutMix only | E | 1 | W | 19 | CIFAR-100 | ✅ 81.74% s42 · 137 min |
-| ETS — MixUp only | E | 1 | W | 19 | CIFAR-100 | ✅ 80.45% s42 · 137 min |
-| ETS — Both CutMix + MixUp *(current)* | E | 3 | W | 19 | CIFAR-100 | ✅ |
-| Static — No mixing | — | 1 | W | 19 | CIFAR-100 | ✅ 78.23% s42 · 139 min |
+| **ETS — No mixing** (required) | E | 1 | W | 19 | CIFAR-100 | done — 79.29% s42 · 137 min |
+| ETS — CutMix only | E | 1 | W | 19 | CIFAR-100 | done — 81.74% s42 · 137 min |
+| ETS — MixUp only | E | 1 | W | 19 | CIFAR-100 | done — 80.45% s42 · 137 min |
+| ETS — Both CutMix + MixUp *(current)* | E | 3 | W | 19 | CIFAR-100 | done |
+| Static — No mixing | — | 1 | W | 19 | CIFAR-100 | done — 78.23% s42 · 139 min |
 
 **Answers:** Is the accuracy gain driven by the curriculum ordering of ops, or simply by the delayed introduction of CutMix/MixUp? Which mixing strategy contributes more?
 
@@ -161,11 +161,11 @@ python -m experiments.train_baseline --dataset cifar100 --model wideresnet \
 
 | Experiment | Apply | Seeds | Arch | Pool | Dataset | Status |
 |:---|:---:|:---:|:---:|:---:|:---:|:---:|
-| **Reverse: Hard → Medium → Easy** ⭐ FIT Q105 | E | 1 | W | 19 | CIFAR-100 | ✅ 78.17% s42 |
-| **Hard from epoch 1 (t1=0, t2=0)** ⚠️ MVT | E | 1 | W | 19 | CIFAR-100 | 📋 |
-| T1 + T3 only (skip T2) | E | 1 | W | 19 | CIFAR-100 | 📋 |
-| T2 only (photometric ops, all 100 epochs) | E | 1 | W | 19 | CIFAR-100 | 📋 |
-| 2-tier only: Easy → Hard | E | 1 | W | 19 | CIFAR-100 | 📋 |
+| **Reverse: Hard → Medium → Easy** FIT Q105 | E | 1 | W | 19 | CIFAR-100 | done — 78.17% s42 |
+| **Hard from epoch 1 (t1=0, t2=0)** (required) | E | 1 | W | 19 | CIFAR-100 | pending |
+| T1 + T3 only (skip T2) | E | 1 | W | 19 | CIFAR-100 | pending |
+| T2 only (photometric ops, all 100 epochs) | E | 1 | W | 19 | CIFAR-100 | pending |
+| 2-tier only: Easy → Hard | E | 1 | W | 19 | CIFAR-100 | pending |
 
 **Answers:** Does the progressive 3-tier structure itself drive the gains, or just the final set of ops? Is the middle tier necessary? FIT Q105: *"If reverse performs worse, it directly confirms that order is what matters."*
 
@@ -182,13 +182,13 @@ python -m experiments.train_baseline --dataset cifar100 --model wideresnet \
 
 | Experiment | Apply | Seeds | Arch | Pool | Dataset | Status |
 |:---|:---:|:---:|:---:|:---:|:---:|:---:|
-| Strength = 0.3 | E | 1 | R | old | CIFAR-100 | ✅ *(ResNet-50, MultiStep, Apr-26)* |
-| Strength = 0.5 | E | 1 | R | old | CIFAR-100 | ✅ *(ResNet-50, MultiStep, Apr-26)* |
-| Strength = 0.7 *(default)* | E | 1+3 | R+W | old+19 | CIFAR-100 | ✅ |
-| Strength = 0.9 | E | 1 | R | old | CIFAR-100 | ✅ *(ResNet-50, MultiStep, Apr-26)* |
-| Strength = 0.5 on WideResNet | E | 1 | W | 19 | CIFAR-100 | 📋 *(optional)* |
-| Strength = 0.9 on WideResNet | E | 1 | W | 19 | CIFAR-100 | 📋 *(optional)* |
-| No strength ramp (hard jump at tier boundary) | E | 1 | W | 19 | CIFAR-100 | 📋 |
+| Strength = 0.3 | E | 1 | R | old | CIFAR-100 | done — *(ResNet-50, MultiStep, Apr-26)* |
+| Strength = 0.5 | E | 1 | R | old | CIFAR-100 | done — *(ResNet-50, MultiStep, Apr-26)* |
+| Strength = 0.7 *(default)* | E | 1+3 | R+W | old+19 | CIFAR-100 | done |
+| Strength = 0.9 | E | 1 | R | old | CIFAR-100 | done — *(ResNet-50, MultiStep, Apr-26)* |
+| Strength = 0.5 on WideResNet | E | 1 | W | 19 | CIFAR-100 | pending — *(optional)* |
+| Strength = 0.9 on WideResNet | E | 1 | W | 19 | CIFAR-100 | pending — *(optional)* |
+| No strength ramp (hard jump at tier boundary) | E | 1 | W | 19 | CIFAR-100 | pending |
 
 **Answers:** Is augmentation strength an independent variable from the curriculum? Is the 5-epoch strength ramp at tier transitions important for smooth convergence?
 
@@ -205,10 +205,10 @@ python -m experiments.train_baseline --dataset cifar100 --model wideresnet \
 
 | Experiment | Apply | Seeds | Arch | Pool | Dataset | Status |
 |:---|:---:|:---:|:---:|:---:|:---:|:---:|
-| Early: T1=10%, T2=30% | E | 1 | W | 19 | CIFAR-100 | 📋 |
-| Default: T1=20%, T2=45% | E | 3 | W | 19 | CIFAR-100 | ✅ |
-| Late: T1=30%, T2=60% | E | 1 | W | 19 | CIFAR-100 | 📋 |
-| Very late: T1=40%, T2=70% | E | 1 | W | 19 | CIFAR-100 | 📋 |
+| Early: T1=10%, T2=30% | E | 1 | W | 19 | CIFAR-100 | pending |
+| Default: T1=20%, T2=45% | E | 3 | W | 19 | CIFAR-100 | done |
+| Late: T1=30%, T2=60% | E | 1 | W | 19 | CIFAR-100 | pending |
+| Very late: T1=40%, T2=70% | E | 1 | W | 19 | CIFAR-100 | pending |
 
 **Answers:** How sensitive is the curriculum to when tier transitions happen? Are the default 20%/45% thresholds specifically tuned, or does the method work robustly across a range of timings?
 
@@ -224,10 +224,10 @@ python -m experiments.train_baseline --dataset cifar100 --model wideresnet \
 
 | Experiment | Apply | Seeds | Arch | Pool | Dataset | Status |
 |:---|:---:|:---:|:---:|:---:|:---:|:---:|
-| min_epochs_per_tier = 10 *(default)* | G | 3 | W | 19 | CIFAR-100 | ✅ (v2) |
-| min_epochs_per_tier = 20 *(old default)* | G | 3 | W | 19 | CIFAR-100 | ✅ 79.59% |
-| max_promote_frac = 0.25 *(faster advancement)* | G | 1 | W | 19 | CIFAR-100 | 📋 |
-| update_freq = 10 *(less frequent)* | G | 1 | W | 19 | CIFAR-100 | 📋 |
+| min_epochs_per_tier = 10 *(default)* | G | 3 | W | 19 | CIFAR-100 | done — (v2) |
+| min_epochs_per_tier = 20 *(old default)* | G | 3 | W | 19 | CIFAR-100 | done — 79.59% |
+| max_promote_frac = 0.25 *(faster advancement)* | G | 1 | W | 19 | CIFAR-100 | pending |
+| update_freq = 10 *(less frequent)* | G | 1 | W | 19 | CIFAR-100 | pending |
 
 **Answers:** How sensitive is EGS to its hyperparameters? Would faster tier advancement (lower min_epochs) activate mixing earlier and improve results? Does update frequency matter?
 
@@ -245,8 +245,8 @@ python -m experiments.train_baseline --dataset cifar100 --model wideresnet \
 
 | Version | T3 thresh | mix_alpha | Seeds | Test Top-1 | Status |
 |:---|:---:|:---:|:---:|:---:|:---:|
-| v2 — fixed thresholds, soft mix (α=0.2) | 0.15 | 0.2 | 3 | s42=79.83% · s123=80.39% · s456=79.81% → **80.01% ± 0.27%** | ✅ complete |
-| v3 — raised T3 thresh (0.25), stronger mix (α=0.4) | 0.25 | 0.4 | 1 | 79.62% | ✅ worse than v2 |
+| v2 — fixed thresholds, soft mix (α=0.2) | 0.15 | 0.2 | 3 | s42=79.83% · s123=80.39% · s456=79.81% → **80.01% ± 0.27%** | done — complete |
+| v3 — raised T3 thresh (0.25), stronger mix (α=0.4) | 0.25 | 0.4 | 1 | 79.62% | done — worse than v2 |
 
 ```bash
 # v3 command
@@ -267,10 +267,10 @@ python -m experiments.train_baseline --dataset cifar100 --model wideresnet \
 
 | Experiment | Apply | Seeds | Arch | Pool | Dataset | Status |
 |:---|:---:|:---:|:---:|:---:|:---:|:---:|
-| No Augmentation | — | 1 | W | — | Tiny-ImageNet | ✅ 63.46% s42 · 1043 min |
-| Static Mixing | — | 1 | W | 19 | Tiny-ImageNet | ✅ 66.88% s42 · 1069 min |
-| Tiered ETS | E | 1 | W | 19 | Tiny-ImageNet | ✅ 69.16% s42 · 1032 min (+2.28pp vs static) |
-| Tiered LPS | L | 1 | W | 19 | Tiny-ImageNet | 📋 |
+| No Augmentation | — | 1 | W | — | Tiny-ImageNet | done — 63.46% s42 · 1043 min |
+| Static Mixing | — | 1 | W | 19 | Tiny-ImageNet | done — 66.88% s42 · 1069 min |
+| Tiered ETS | E | 1 | W | 19 | Tiny-ImageNet | done — 69.16% s42 · 1032 min (+2.28pp vs static) |
+| Tiered LPS | L | 1 | W | 19 | Tiny-ImageNet | pending |
 
 **Answers:** Does the curriculum benefit hold on a harder dataset (200 classes, 64×64)? Does the method scale beyond CIFAR-100?
 
@@ -286,11 +286,11 @@ python -m experiments.train_baseline --dataset cifar100 --model wideresnet \
 
 | Experiment | Apply | Seeds | Arch | Pool | Dataset | Status |
 |:---|:---:|:---:|:---:|:---:|:---:|:---:|
-| No Augmentation | — | 1 | R | — | CIFAR-100 | ✅ 65.30% s42 · 67 min |
-| Static Mixing | — | 1 | R | 19 | CIFAR-100 | ✅ 76.62% s42 · 69 min |
-| Tiered EGS v2 | G | 1 | R | 19 | CIFAR-100 | ✅ 79.10% s42 · 151 min |
-| Tiered ETS | E | 1 | R | 19 | CIFAR-100 | ✅ 80.41% s42 · 68 min |
-| Tiered LPS | L | 1 | R | 19 | CIFAR-100 | ✅ 80.50% s42 · T1→T2 ep23 · T2→T3 ep36 · 68 min |
+| No Augmentation | — | 1 | R | — | CIFAR-100 | done — 65.30% s42 · 67 min |
+| Static Mixing | — | 1 | R | 19 | CIFAR-100 | done — 76.62% s42 · 69 min |
+| Tiered EGS v2 | G | 1 | R | 19 | CIFAR-100 | done — 79.10% s42 · 151 min |
+| Tiered ETS | E | 1 | R | 19 | CIFAR-100 | done — 80.41% s42 · 68 min |
+| Tiered LPS | L | 1 | R | 19 | CIFAR-100 | done — 80.50% s42 · T1→T2 ep23 · T2→T3 ep36 · 68 min |
 
 **Answers:** Is the curriculum benefit specific to WideResNet or does it generalise across architectures? Do larger capacity models benefit more or less from progressive augmentation?
 
@@ -300,23 +300,21 @@ python -m experiments.train_baseline --dataset cifar100 --model wideresnet \
 
 ---
 
-## Group J — Analysis Tasks *(no new training)*
-
-> ⭐ = grade-boosting addition · ⚠️ MVT = minimum viable thesis
+## Group J — Analysis Tasks (no new training)
 
 | Task | Uses | Answers | Status |
 |:---|:---|:---|:---:|
-| **Statistical significance (t-test / Wilcoxon)** ⚠️ MVT | 5-seed results | Are observed differences statistically significant? | ✅ Welch: ETS vs Static p<0.001 d=9.83 · LPS vs Static p<0.001 d=10.12 · ETS vs LPS ns (p=0.757) · Wilcoxon added as non-parametric confirmation |
-| **t-SNE feature visualisation** ⭐ | WRN checkpoints (all 5 methods) | Do curriculum models learn better-separated representations? | ✅ Ratio: NoAug=5.49 · Static=8.32 · EGS=9.97 · ETS=10.75 · LPS=10.82 (best) |
-| **CIFAR-100-C robustness (mCE)** ⭐ | WRN checkpoints | Is the model more robust to natural corruptions? | ✅ EGS=66.90% · Static=66.27% · LPS=52.13% · ETS=51.81% — trade-off finding: ETS/LPS optimize clean acc at cost of robustness |
-| Convergence speed (epochs to 70/75/80%) | History files | Does curriculum reach target accuracy faster? | 📋 |
-| ECE — Expected Calibration Error ⭐ | WRN checkpoints | Does curriculum reduce model overconfidence? | 📋 |
-| Per-class accuracy analysis (top/bottom 10 classes) | WRN checkpoints | Which classes benefit most from curriculum? | 📋 |
-| EGS force-promoted sample analysis | EGS logs | Do stuck samples concentrate in specific semantic categories? | 📋 |
-| Tier transition dip quantification | ETS/LPS histories | How large are accuracy dips at tier boundaries and how fast is recovery? | 📋 |
-| Entropy trajectory plot | EGS logs | How does model confidence evolve across training? | 📋 |
-| Train–val gap inversion analysis | All histories | Does curriculum reduce overfitting (train acc ≈ val acc)? | 📋 |
-| MADAug comparison vs published numbers | Their paper | How does the method compare to the closest prior work? | 📋 |
+| **Statistical significance (t-test / Wilcoxon)** (required) | 5-seed results | Are observed differences statistically significant? | done — Welch: ETS vs Static p<0.001 d=9.83 · LPS vs Static p<0.001 d=10.12 · ETS vs LPS ns (p=0.757) · Wilcoxon added as non-parametric confirmation |
+| **t-SNE feature visualisation** | WRN checkpoints (all 5 methods) | Do curriculum models learn better-separated representations? | done — Ratio: NoAug=5.49 · Static=8.32 · EGS=9.97 · ETS=10.75 · LPS=10.82 (best) |
+| **CIFAR-100-C robustness (mCE)** | WRN checkpoints | Is the model more robust to natural corruptions? | done — EGS=66.90% · Static=66.27% · LPS=52.13% · ETS=51.81% — trade-off finding: ETS/LPS optimize clean acc at cost of robustness |
+| Convergence speed (epochs to 70/75/80%) | History files | Does curriculum reach target accuracy faster? | pending |
+| ECE — Expected Calibration Error | WRN checkpoints | Does curriculum reduce model overconfidence? | pending |
+| Per-class accuracy analysis (top/bottom 10 classes) | WRN checkpoints | Which classes benefit most from curriculum? | pending |
+| EGS force-promoted sample analysis | EGS logs | Do stuck samples concentrate in specific semantic categories? | pending |
+| Tier transition dip quantification | ETS/LPS histories | How large are accuracy dips at tier boundaries and how fast is recovery? | pending |
+| Entropy trajectory plot | EGS logs | How does model confidence evolve across training? | pending |
+| Train–val gap inversion analysis | All histories | Does curriculum reduce overfitting (train acc ≈ val acc)? | pending |
+| MADAug comparison vs published numbers | Their paper | How does the method compare to the closest prior work? | pending |
 
 ### Group J Commands
 
@@ -418,34 +416,34 @@ python analysis/cifar100c_robustness.py --c_root data/CIFAR-100-C
 
 ## Priority Order
 
-> ✅ = done · 📋 = pending
+> done = done · pending = pending
 
 | Rank | Experiment / Task | Est. Time | Why | Status |
 |:---:|:---|:---:|:---|:---:|
-| 1 | EGS 19-op seeds 123 + 456 | ~576 min | Completes primary Table 2 | ✅ |
-| 2 | **RandAugment N=2 M=9** ⚠️ MVT | ~135 min | Named in FIT, must be in main table | 📋 |
-| 3 | **Hard from epoch 1** ⚠️ MVT | ~135 min | Answers "does order matter?" | 📋 |
-| 4 | **Random augmentation** ⚠️ MVT | ~135 min | Required baseline | 📋 |
-| 5 | ETS no-mix | ~135 min | Direct answer to "is it mixing or curriculum?" | ✅ |
-| 6 | Reverse curriculum | ~135 min | FIT Q105 — most important ablation | ✅ |
-| 7 | **Statistical significance (Welch + Wilcoxon)** ⚠️ MVT | analysis | FIT Q50 | ✅ |
-| 8 | **t-SNE feature visualisation** ⭐ | ~30 min | Shows better representations visually | ✅ |
-| 9 | **CIFAR-100-C robustness** ⭐ | ~2 hrs | OOD robustness — trade-off finding | ✅ |
-| 10 | CutMix only + MixUp only | ~270 min | FIT Q33 — mixing decomposition | ✅ |
-| 11 | Tiny-ImageNet ETS + LPS | ~1069 min | Cross-dataset generalisation | ✅ |
-| 12 | ResNet-50 × 4 | ~540 min | FIT primary backbone | ✅ |
-| 13 | **ETS 200 epochs** ⭐ | ~270 min | Match published 200ep baselines | 📋 |
-| 14 | **LPS 200 epochs** ⭐ | ~270 min | Match published 200ep baselines | 📋 |
-| 15 | **TrivialAugment** ⭐ | ~135 min | Standard 2021 baseline — needs implementation | 📋 |
-| 16 | **AutoAugment** ⭐ | ~135 min | Gold standard baseline — needs implementation | 📋 |
-| 17 | MultiStep scheduler × 3 | ~405 min | Committee will ask why cosine was chosen | 📋 |
-| 18 | Tier boundary timing × 3 | ~405 min | FIT Q16, Q30 — sensitivity | 📋 |
-| 19 | Strength ablation × 3 | ~405 min | FIT Q71-72 | 📋 |
-| 20 | EGS sensitivity × 3 | ~576 min | FIT Q24 | 📋 |
-| 21 | T1+T3 skip, 2-tier | ~270 min | Structure ablation | 📋 |
-| 22 | Convergence speed analysis | analysis | FIT Q9, Q69 | 📋 |
-| 23 | ECE calibration ⭐ | analysis | Shows curriculum improves model confidence | 📋 |
-| 24 | Per-class accuracy analysis | analysis | FIT Q51-52 | 📋 |
+| 1 | EGS 19-op seeds 123 + 456 | ~576 min | Completes primary Table 2 | done |
+| 2 | **RandAugment N=2 M=9** (required) | ~135 min | Named in FIT, must be in main table | pending |
+| 3 | **Hard from epoch 1** (required) | ~135 min | Answers "does order matter?" | pending |
+| 4 | **Random augmentation** (required) | ~135 min | Required baseline | pending |
+| 5 | ETS no-mix | ~135 min | Direct answer to "is it mixing or curriculum?" | done |
+| 6 | Reverse curriculum | ~135 min | FIT Q105 — most important ablation | done |
+| 7 | **Statistical significance (Welch + Wilcoxon)** (required) | analysis | FIT Q50 | done |
+| 8 | **t-SNE feature visualisation** | ~30 min | Shows better representations visually | done |
+| 9 | **CIFAR-100-C robustness** | ~2 hrs | OOD robustness — trade-off finding | done |
+| 10 | CutMix only + MixUp only | ~270 min | FIT Q33 — mixing decomposition | done |
+| 11 | Tiny-ImageNet ETS + LPS | ~1069 min | Cross-dataset generalisation | done |
+| 12 | ResNet-50 × 4 | ~540 min | FIT primary backbone | done |
+| 13 | **ETS 200 epochs** | ~270 min | Match published 200ep baselines | pending |
+| 14 | **LPS 200 epochs** | ~270 min | Match published 200ep baselines | pending |
+| 15 | **TrivialAugment** | ~135 min | Standard 2021 baseline — needs implementation | pending |
+| 16 | **AutoAugment** | ~135 min | Gold standard baseline — needs implementation | pending |
+| 17 | MultiStep scheduler × 3 | ~405 min | Committee will ask why cosine was chosen | pending |
+| 18 | Tier boundary timing × 3 | ~405 min | FIT Q16, Q30 — sensitivity | pending |
+| 19 | Strength ablation × 3 | ~405 min | FIT Q71-72 | pending |
+| 20 | EGS sensitivity × 3 | ~576 min | FIT Q24 | pending |
+| 21 | T1+T3 skip, 2-tier | ~270 min | Structure ablation | pending |
+| 22 | Convergence speed analysis | analysis | FIT Q9, Q69 | pending |
+| 23 | ECE calibration | analysis | Shows curriculum improves model confidence | pending |
+| 24 | Per-class accuracy analysis | analysis | FIT Q51-52 | pending |
 
 ---
 
@@ -456,14 +454,14 @@ python analysis/cifar100c_robustness.py --c_root data/CIFAR-100-C
 | A — Core (MVT) | 3 | ~405 min | RandAugment · Hard@1 · Random |
 | A — Core (new baselines) | 4 | ~810 min | TrivialAugment · AutoAugment · ETS 200ep · LPS 200ep |
 | B — Scheduler | 3 | ~405 min | MultiStep |
-| C — Mixing | 0 | ✅ | complete |
+| C — Mixing | 0 | done | complete |
 | D — Curriculum structure | 4 | ~540 min | |
 | E — Strength | 4 | ~540 min | |
 | F — Tier boundaries | 3 | ~405 min | |
 | G — EGS sensitivity | 4 | ~576 min | |
-| H — Tiny-ImageNet | 0 | ✅ | complete |
-| I — ResNet-50 | 0 | ✅ | complete |
-| J — Analysis | 0 | ✅ | t-SNE · t-test · CIFAR-100-C all done |
+| H — Tiny-ImageNet | 0 | done | complete |
+| I — ResNet-50 | 0 | done | complete |
+| J — Analysis | 0 | done | t-SNE · t-test · CIFAR-100-C all done |
 | **MVT only** | **3 runs** | **~7 hrs** | Minimum to defend |
 | **Full thesis** | **18 runs** | **~58 hrs** | All optional runs included |
 
@@ -478,7 +476,7 @@ python analysis/cifar100c_robustness.py --c_root data/CIFAR-100-C
 | 2-tier (Easy → Hard) | Same as above |
 | T2 only | Same as above |
 | No strength ramp | `--strength_ramp_epochs 0` flag |
-| Hard from epoch 1 | ✅ Already works: `--tier_t1 0.0 --tier_t2 0.0` |
+| Hard from epoch 1 | done — Already works: `--tier_t1 0.0 --tier_t2 0.0` |
 
 ---
 
