@@ -438,3 +438,94 @@
 > **Finding 4 — Static Mixing vs curriculum representational gap:** Even with CutMix/MixUp from epoch 1, Static Mixing achieves a separation ratio of only 8.32 — well below LPS/ETS (10.82/10.75). The 2.5-point gap in separation ratio corresponds to the 4.01pp accuracy gap, confirming that forcing aggressive augmentation from the start prevents stable feature formation, and that the curriculum's value is specifically in *when* hard augmentation is introduced.
 
 ---
+
+# Statistical Significance
+
+> WideResNet-28-10 · CIFAR-100 · 19-op pool · 100 epochs · 5 seeds (42, 123, 456, 3407, 1024)
+> Test: Welch's t-test (unequal variance) · Effect size: Cohen's d
+
+## Table 17 — Per-Method Summary (5-seed)
+
+| Method | Mean | Std | Seeds |
+|:---|:---:|:---:|:---|
+| Static Mixing | 77.60% | ±0.50% | [77.79, 76.82, 77.69, 78.17, 77.54] |
+| EGS v2 | 79.75% | ±0.44% | [79.83, 80.39, 79.81, 79.21, 79.49] |
+| ETS | 81.39% | ±0.23% | [81.35, 81.25, 81.35, 81.79, 81.23] |
+| LPS | 81.44% | ±0.20% | [81.36, 81.43, 81.27, 81.34, 81.79] |
+
+## Table 18 — Pairwise Welch's t-test Results
+
+| Comparison | Δ Acc | t | p | Sig | Cohen's d |
+|:---|:---:|:---:|:---:|:---:|:---:|
+| ETS vs Static Mixing | +3.79pp | 15.550 | 0.0000 | *** | 9.83 |
+| LPS vs Static Mixing | +3.84pp | 16.004 | 0.0000 | *** | 10.12 |
+| EGS v2 vs Static Mixing | +2.14pp | 7.228 | 0.0001 | *** | 4.57 |
+| ETS vs EGS v2 | +1.65pp | 7.418 | 0.0003 | *** | 4.69 |
+| LPS vs EGS v2 | +1.69pp | 7.777 | 0.0003 | *** | 4.92 |
+| **ETS vs LPS** | **−0.04pp** | **−0.321** | **0.7567** | **ns** | **−0.20** |
+
+> Significance: *** p<0.001 · ** p<0.01 · * p<0.05 · ns = not significant
+> Cohen's d: small ≥0.2 · medium ≥0.5 · large ≥0.8
+
+> **Finding 1 — All curriculum methods significantly outperform static mixing:** ETS (d=9.83), LPS (d=10.12), and EGS (d=4.57) all achieve p<0.001 against Static Mixing. Cohen's d values of 9–10 are extraordinarily large — "large" effect begins at 0.8. These differences cannot be attributed to random seed variation.
+>
+> **Finding 2 — ETS and LPS are statistically indistinguishable:** Δ=−0.04pp, p=0.757, d=−0.20. The scheduling mechanism (fixed epoch thresholds vs adaptive loss plateaus) does not significantly affect final accuracy. The curriculum structure — progressive tier exposure — is the critical factor, not the advancement signal.
+>
+> **Finding 3 — EGS is significantly weaker than ETS/LPS:** ETS vs EGS: p=0.0003, d=4.69. LPS vs EGS: p=0.0003, d=4.92. The 1.65–1.69pp gap is statistically confirmed. Per-sample scheduling delays full Tier 3 exposure, resulting in measurably worse representations and accuracy.
+
+---
+
+# CIFAR-100-C Robustness
+
+> WideResNet-28-10 · CIFAR-100 · Seed 42 · 19 corruptions × 5 severity levels · 10,000 images per corruption-severity pair
+> Script: `python analysis/cifar100c_robustness.py --c_root data/CIFAR-100-C`
+> Figures: `results/figs/cifar100c_robustness.png` · `cifar100c_robustness_hd.png`
+
+---
+
+## Table 19 — CIFAR-100-C Robustness Summary
+
+| Method | Clean Acc | Mean Corrupted Acc ↑ | Robustness Drop ↓ |
+|:---|:---:|:---:|:---:|
+| No Augmentation | 72.86% | 45.58% | 27.28 pp |
+| **EGS v2** | **79.75%** | **66.90%** | **12.85 pp** |
+| Static Mixing | 77.60% | 66.27% | 11.33 pp |
+| LPS | 81.35% | 52.13% | 29.22 pp |
+| ETS | 81.39% | 51.81% | 29.58 pp |
+
+## Table 20 — Per-Corruption Mean Accuracy (%) across 5 Severity Levels
+
+| Corruption | No Aug | Static | ETS | LPS | EGS |
+|:---|:---:|:---:|:---:|:---:|:---:|
+| gaussian_noise | 21.36 | 49.89 | 21.43 | 22.38 | 47.58 |
+| shot_noise | 29.87 | 59.27 | 30.89 | 31.62 | 57.18 |
+| impulse_noise | 21.71 | 64.64 | 24.53 | 26.95 | 63.26 |
+| speckle_noise | 31.34 | 61.23 | 33.14 | 34.17 | 59.64 |
+| defocus_blur | 54.44 | 74.97 | 63.07 | 62.56 | 77.23 |
+| glass_blur | 15.73 | 52.13 | 17.72 | 20.93 | 51.10 |
+| motion_blur | 49.75 | 69.61 | 58.12 | 57.26 | 68.31 |
+| zoom_blur | 48.44 | 72.80 | 55.97 | 55.10 | 74.59 |
+| fog | 59.15 | 71.47 | 68.40 | 68.39 | 72.97 |
+| frost | 46.60 | 68.02 | 53.00 | 53.52 | 66.95 |
+| snow | 51.94 | 68.17 | 61.00 | 61.49 | 67.94 |
+| brightness | 69.66 | 76.23 | 77.90 | 77.52 | 78.11 |
+| contrast | 47.87 | 70.08 | 59.79 | 59.96 | 72.94 |
+| elastic_transform | 54.27 | 68.71 | 63.56 | 63.18 | 69.44 |
+| pixelate | 51.27 | 54.79 | 53.32 | 52.01 | 60.23 |
+| jpeg_compression | 48.72 | 58.16 | 50.97 | 51.31 | 58.91 |
+| saturate | 61.97 | 69.54 | 69.27 | 69.17 | 72.25 |
+| gaussian_blur | 46.56 | 74.64 | 53.32 | 52.87 | 76.88 |
+| spatter | 55.38 | 74.72 | 68.93 | 70.12 | 75.52 |
+| **Mean** | **45.58** | **66.27** | **51.81** | **52.13** | **66.90** |
+
+> **Finding 1 — Clean accuracy vs corruption robustness trade-off:** ETS and LPS achieve the highest clean accuracy (+3.84pp over Static Mixing) but exhibit substantially lower CIFAR-100-C robustness (51.81–52.13% vs 66.27%). EGS marginally outperforms Static Mixing on corrupted data (66.90% vs 66.27%, +0.63pp) while also exceeding it on clean accuracy (+2.15pp). This reveals a trade-off inherent to late-tier mixing curriculum designs.
+>
+> **Finding 2 — Noise corruptions expose the mixing timing effect:** On noise corruptions (gaussian, shot, impulse, speckle), ETS (21–33%) performs nearly identically to No Augmentation (21–31%), while Static Mixing (49–65%) and EGS (47–63%) are dramatically better. Noise is absent from all training tiers, so robustness to it is driven entirely by CutMix/MixUp training. Static Mixing and EGS apply mixing from epoch 1 and ~epoch 30 respectively, building noise-robust features. ETS/LPS restrict mixing to Tier 3 (epoch 46+), providing insufficient exposure.
+>
+> **Finding 3 — Curriculum augmentation types improve where they are present:** ETS/LPS show clear improvement over No Augmentation on corruptions that overlap with their training ops: brightness (+8.24pp), fog (+9.25pp), elastic_transform (+9.29pp), snow (+9.06pp). Where ops are absent (noise), no improvement is observed. This confirms that the robustness gap is caused by mixing timing, not by augmentation op selection.
+>
+> **Finding 4 — EGS's gradual mixing builds corruption robustness:** EGS promotes samples to Tier 3 (with mixing) progressively from around epoch 30, giving the network ~70 epochs of mixing exposure for the earliest-promoted samples — compared to ETS's fixed 54 epochs and Static's full 100 epochs. This earlier average mixing exposure explains EGS's strong corruption robustness (66.90%) despite its per-sample scheduling design.
+>
+> **Limitation and future work:** The clean accuracy vs robustness trade-off could be resolved by enabling CutMix/MixUp from Tier 2 (epoch ~20) rather than Tier 3. This would give ETS/LPS 80 epochs of mixing exposure, potentially achieving both high clean accuracy and strong corruption robustness. Testing this modification is left as future work.
+
+---

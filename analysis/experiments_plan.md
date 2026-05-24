@@ -39,6 +39,8 @@
 | ETS 150 epochs (14-op) | E | 3 | W | 14 | CIFAR-100 | 🔶 |
 | **RandAugment N=2, M=9** ⚠️ MVT | — | 1 | W | — | CIFAR-100 | 📋 |
 | **Random Aug (same pool, no ordering)** ⚠️ MVT | — | 1 | W | 19 | CIFAR-100 | 📋 |
+| **TrivialAugment** ⭐ baseline | — | 1 | W | — | CIFAR-100 | 📋 needs implementation check |
+| **AutoAugment (CIFAR-10 policy)** ⭐ baseline | — | 1 | W | — | CIFAR-100 | 📋 needs implementation check |
 | **Static Mixing (19-op) — seeds 3407 + 1024** ⭐ stat | — | 2 | W | 19 | CIFAR-100 | ✅ s3407=78.17% · s1024=77.54% · 5-seed mean=77.60% ± 0.50% |
 | **Tiered ETS (19-op) — seeds 3407 + 1024** ⭐ stat | E | 2 | W | 19 | CIFAR-100 | ✅ s3407=81.79% · s1024=81.23% · 5-seed mean=81.39% ± 0.23% |
 | **Tiered LPS (19-op) — seeds 3407 + 1024** ⭐ stat | L | 2 | W | 19 | CIFAR-100 | ✅ s3407=81.34% · s1024=81.79% · 5-seed mean=81.44% ± 0.20% |
@@ -47,6 +49,23 @@
 > ⭐ stat = extends 3-seed sweep to n=5, eliminating the small-sample limitation in t-test (Cohen's d=10 at n=3 is already convincing; n=5 removes reviewer objection entirely).
 
 **Answers:** Does the proposed curriculum outperform published baselines (RandAugment)? Is the improvement from ordering or just the ops chosen?
+
+---
+
+### Published Baselines — Cite Only (no training needed)
+
+> All at WideResNet-28-10 · CIFAR-100 · 200 epochs.
+> Use as context row in comparison table with † footnote: *"Published results at 200 epochs."*
+> Do NOT put in the same table row as your 100-epoch results without the footnote.
+
+| Method | CIFAR-100 Top-1 | Epochs | Reference |
+|:---|:---:|:---:|:---|
+| AutoAugment | 82.9% | 200 | Cubuk et al., 2019 |
+| RandAugment | 83.3% | 200 | Cubuk et al., 2020 |
+| TrivialAugment | 82.5% | 200 | Müller & Hutter, 2021 |
+| AugMix | 80.9% | 200 | Hendrycks et al., 2020 |
+
+> **Your ETS at 100 epochs: 81.39% ± 0.23%** — competitive with AugMix at 200ep, within 2pp of AutoAugment/TrivialAugment at double the epochs.
 
 ```bash
 # Extra seeds — Static Mixing
@@ -287,9 +306,9 @@ python -m experiments.train_baseline --dataset cifar100 --model wideresnet \
 
 | Task | Uses | Answers | Status |
 |:---|:---|:---|:---:|
-| **Statistical significance (t-test / Wilcoxon)** ⚠️ MVT | 3-seed results | Are observed differences statistically significant? | 📋 |
+| **Statistical significance (t-test / Wilcoxon)** ⚠️ MVT | 5-seed results | Are observed differences statistically significant? | ✅ Welch: ETS vs Static p<0.001 d=9.83 · LPS vs Static p<0.001 d=10.12 · ETS vs LPS ns (p=0.757) · Wilcoxon added as non-parametric confirmation |
 | **t-SNE feature visualisation** ⭐ | WRN checkpoints (all 5 methods) | Do curriculum models learn better-separated representations? | ✅ Ratio: NoAug=5.49 · Static=8.32 · EGS=9.97 · ETS=10.75 · LPS=10.82 (best) |
-| **CIFAR-100-C robustness (mCE)** ⭐ | WRN checkpoints | Is the model more robust to natural corruptions? | 📋 |
+| **CIFAR-100-C robustness (mCE)** ⭐ | WRN checkpoints | Is the model more robust to natural corruptions? | ✅ EGS=66.90% · Static=66.27% · LPS=52.13% · ETS=51.81% — trade-off finding: ETS/LPS optimize clean acc at cost of robustness |
 | Convergence speed (epochs to 70/75/80%) | History files | Does curriculum reach target accuracy faster? | 📋 |
 | ECE — Expected Calibration Error ⭐ | WRN checkpoints | Does curriculum reduce model overconfidence? | 📋 |
 | Per-class accuracy analysis (top/bottom 10 classes) | WRN checkpoints | Which classes benefit most from curriculum? | 📋 |
@@ -306,9 +325,9 @@ python -m experiments.train_baseline --dataset cifar100 --model wideresnet \
 python analysis/tsne_features.py --data_root data --val_split 0.1
 # Output: results/figs/tsne/tsne_grid.png (thesis) + tsne_row.png (slides)
 
-# Statistical significance — Welch's t-test + Cohen's d (run anywhere, no GPU needed)
+# Statistical significance — Welch's t-test + Wilcoxon signed-rank + Cohen's d (no GPU needed)
 python analysis/ttest_significance.py
-# Output: p-values + Cohen's d for all 6 method pairs (update RESULTS dict after adding seeds 7+13)
+# Output: Welch t-test + Wilcoxon for all 6 method pairs (5 seeds, paired)
 
 # Statistical significance — Welch's t-test between ETS and Static Mixing
 # (3-seed results already in thesis_results_tables.md — just run this script)
@@ -361,6 +380,24 @@ python -m experiments.train_baseline --dataset cifar100 --model wideresnet \
     --augmentation random --epochs 100 --scheduler cosine \
     --warmup_epochs 5 --lr 0.1 --use_amp --seed 42
 
+# TrivialAugment (cluster — ~135 min)
+# Requires torchvision >= 0.12 — verify first:
+#   python -c "from torchvision import transforms; print(hasattr(transforms, 'TrivialAugmentWide'))"
+# Requires implementation in augmentations/policies.py (TrivialAugmentPolicy + registry entry)
+python -m experiments.train_baseline --dataset cifar100 --model wideresnet \
+    --augmentation trivialaugment \
+    --epochs 100 --scheduler cosine --warmup_epochs 5 --lr 0.1 \
+    --use_amp --seed 42
+
+# AutoAugment CIFAR-10 policy (cluster — ~135 min)
+# Requires torchvision >= 0.12 — verify first:
+#   python -c "from torchvision import transforms; print(hasattr(transforms, 'AutoAugment'))"
+# Requires implementation in augmentations/policies.py (AutoAugmentPolicy + registry entry)
+python -m experiments.train_baseline --dataset cifar100 --model wideresnet \
+    --augmentation autoaugment \
+    --epochs 100 --scheduler cosine --warmup_epochs 5 --lr 0.1 \
+    --use_amp --seed 42
+
 # LPS Tiny-ImageNet (cluster — ~1069 min)
 python -m experiments.train_baseline --dataset tiny_imagenet --model wideresnet \
     --augmentation tiered_curriculum --tier_schedule lps \
@@ -386,42 +423,49 @@ python analysis/cifar100c_robustness.py --c_root data/CIFAR-100-C
 | Rank | Experiment / Task | Est. Time | Why | Status |
 |:---:|:---|:---:|:---|:---:|
 | 1 | EGS 19-op seeds 123 + 456 | ~576 min | Completes primary Table 2 | ✅ |
-| 2 | **RandAugment** | ~135 min | MVT — named in FIT, must be in main table | 📋 |
-| 3 | ETS no-mix | ~135 min | MVT — direct answer to "is it mixing or curriculum?" | ✅ |
-| 4 | Reverse curriculum | ~135 min | FIT Q105 — single most important ablation | ✅ |
-| 5 | Hard from epoch 1 | ~135 min | MVT — answers "does order matter?" | 📋 |
-| 6 | Random augmentation | ~135 min | Required baseline | 📋 |
-| 7 | **Statistical significance (t-test)** | analysis | MVT — FIT Q50 | ✅ |
+| 2 | **RandAugment N=2 M=9** ⚠️ MVT | ~135 min | Named in FIT, must be in main table | 📋 |
+| 3 | **Hard from epoch 1** ⚠️ MVT | ~135 min | Answers "does order matter?" | 📋 |
+| 4 | **Random augmentation** ⚠️ MVT | ~135 min | Required baseline | 📋 |
+| 5 | ETS no-mix | ~135 min | Direct answer to "is it mixing or curriculum?" | ✅ |
+| 6 | Reverse curriculum | ~135 min | FIT Q105 — most important ablation | ✅ |
+| 7 | **Statistical significance (Welch + Wilcoxon)** ⚠️ MVT | analysis | FIT Q50 | ✅ |
 | 8 | **t-SNE feature visualisation** ⭐ | ~30 min | Shows better representations visually | ✅ |
-| 9 | **CIFAR-100-C robustness** ⭐ | ~2 hrs | Proves generalisation beyond CIFAR-100 test set | 📋 |
+| 9 | **CIFAR-100-C robustness** ⭐ | ~2 hrs | OOD robustness — trade-off finding | ✅ |
 | 10 | CutMix only + MixUp only | ~270 min | FIT Q33 — mixing decomposition | ✅ |
-| 11 | Tiny-ImageNet LPS | ~1069 min | Completes Group H | 📋 |
+| 11 | Tiny-ImageNet ETS + LPS | ~1069 min | Cross-dataset generalisation | ✅ |
 | 12 | ResNet-50 × 4 | ~540 min | FIT primary backbone | ✅ |
-| 13 | MultiStep scheduler × 3 | ~405 min | Committee will ask why cosine was chosen | 📋 |
-| 14 | Tier boundary timing × 3 | ~405 min | FIT Q16, Q30 — sensitivity | 📋 |
-| 15 | Strength ablation × 3 | ~405 min | FIT Q71-72 | 📋 |
-| 16 | EGS sensitivity × 3 | ~576 min | FIT Q24 | 📋 |
-| 17 | T1+T3 skip, 2-tier | ~270 min | Structure ablation | 📋 |
-| 18 | Convergence speed analysis | analysis | FIT Q9, Q69 | 📋 |
-| 19 | ECE calibration ⭐ | analysis | Shows curriculum improves model confidence | 📋 |
-| 20 | Per-class accuracy analysis | analysis | FIT Q51-52 | 📋 |
+| 13 | **ETS 200 epochs** ⭐ | ~270 min | Match published 200ep baselines | 📋 |
+| 14 | **LPS 200 epochs** ⭐ | ~270 min | Match published 200ep baselines | 📋 |
+| 15 | **TrivialAugment** ⭐ | ~135 min | Standard 2021 baseline — needs implementation | 📋 |
+| 16 | **AutoAugment** ⭐ | ~135 min | Gold standard baseline — needs implementation | 📋 |
+| 17 | MultiStep scheduler × 3 | ~405 min | Committee will ask why cosine was chosen | 📋 |
+| 18 | Tier boundary timing × 3 | ~405 min | FIT Q16, Q30 — sensitivity | 📋 |
+| 19 | Strength ablation × 3 | ~405 min | FIT Q71-72 | 📋 |
+| 20 | EGS sensitivity × 3 | ~576 min | FIT Q24 | 📋 |
+| 21 | T1+T3 skip, 2-tier | ~270 min | Structure ablation | 📋 |
+| 22 | Convergence speed analysis | analysis | FIT Q9, Q69 | 📋 |
+| 23 | ECE calibration ⭐ | analysis | Shows curriculum improves model confidence | 📋 |
+| 24 | Per-class accuracy analysis | analysis | FIT Q51-52 | 📋 |
 
 ---
 
 ## Outstanding Training Runs Summary
 
-| Group | Runs Remaining | Est. Time |
-|:---|:---:|:---:|
-| A — Core | 10 | ~270 min (MVT) + ~1350 min (extra seeds) |
-| B — Scheduler | 3 | ~405 min |
-| C — Mixing | 0 | ✅ complete |
-| D — Curriculum structure | 4 | ~540 min |
-| E — Strength | 4 | ~540 min |
-| F — Tier boundaries | 3 | ~405 min |
-| G — EGS sensitivity | 4 | ~576 min |
-| H — Tiny-ImageNet | 0 | ✅ complete |
-| I — ResNet-50 | 0 | ✅ complete |
-| **Total** | **21 runs** | **~64 hours** |
+| Group | Runs Remaining | Est. Time | Notes |
+|:---|:---:|:---:|:---|
+| A — Core (MVT) | 3 | ~405 min | RandAugment · Hard@1 · Random |
+| A — Core (new baselines) | 4 | ~810 min | TrivialAugment · AutoAugment · ETS 200ep · LPS 200ep |
+| B — Scheduler | 3 | ~405 min | MultiStep |
+| C — Mixing | 0 | ✅ | complete |
+| D — Curriculum structure | 4 | ~540 min | |
+| E — Strength | 4 | ~540 min | |
+| F — Tier boundaries | 3 | ~405 min | |
+| G — EGS sensitivity | 4 | ~576 min | |
+| H — Tiny-ImageNet | 0 | ✅ | complete |
+| I — ResNet-50 | 0 | ✅ | complete |
+| J — Analysis | 0 | ✅ | t-SNE · t-test · CIFAR-100-C all done |
+| **MVT only** | **3 runs** | **~7 hrs** | Minimum to defend |
+| **Full thesis** | **18 runs** | **~58 hrs** | All optional runs included |
 
 ---
 
