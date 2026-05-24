@@ -39,10 +39,54 @@
 | ETS 150 epochs (14-op) | E | 3 | W | 14 | CIFAR-100 | 🔶 |
 | **RandAugment N=2, M=9** ⚠️ MVT | — | 1 | W | — | CIFAR-100 | 📋 |
 | **Random Aug (same pool, no ordering)** ⚠️ MVT | — | 1 | W | 19 | CIFAR-100 | 📋 |
+| **Static Mixing (19-op) — seeds 3407 + 1024** ⭐ stat | — | 2 | W | 19 | CIFAR-100 | ✅ s3407=78.17% · s1024=77.54% · 5-seed mean=77.60% ± 0.50% |
+| **Tiered ETS (19-op) — seeds 3407 + 1024** ⭐ stat | E | 2 | W | 19 | CIFAR-100 | ✅ s3407=81.79% · s1024=81.23% · 5-seed mean=81.39% ± 0.23% |
+| **Tiered LPS (19-op) — seeds 3407 + 1024** ⭐ stat | L | 2 | W | 19 | CIFAR-100 | ✅ s3407=81.34% · s1024=81.79% · 5-seed mean=81.44% ± 0.20% |
+| **Tiered EGS v2 (19-op) — seeds 3407 + 1024** ⭐ stat | G | 2 | W | 19 | CIFAR-100 | ✅ s3407=79.21% · s1024=79.49% · 5-seed mean=79.75% ± 0.44% |
+
+> ⭐ stat = extends 3-seed sweep to n=5, eliminating the small-sample limitation in t-test (Cohen's d=10 at n=3 is already convincing; n=5 removes reviewer objection entirely).
 
 **Answers:** Does the proposed curriculum outperform published baselines (RandAugment)? Is the improvement from ordering or just the ops chosen?
 
 ```bash
+# Extra seeds — Static Mixing
+python -m experiments.train_baseline --dataset cifar100 --model wideresnet \
+    --augmentation static_mixing --epochs 100 --scheduler cosine \
+    --warmup_epochs 5 --lr 0.1 --use_amp --seed 3407
+python -m experiments.train_baseline --dataset cifar100 --model wideresnet \
+    --augmentation static_mixing --epochs 100 --scheduler cosine \
+    --warmup_epochs 5 --lr 0.1 --use_amp --seed 1024
+
+# Extra seeds — ETS
+python -m experiments.train_baseline --dataset cifar100 --model wideresnet \
+    --augmentation tiered_curriculum --tier_schedule ets \
+    --epochs 100 --scheduler cosine --warmup_epochs 5 --lr 0.1 \
+    --use_amp --seed 3407
+python -m experiments.train_baseline --dataset cifar100 --model wideresnet \
+    --augmentation tiered_curriculum --tier_schedule ets \
+    --epochs 100 --scheduler cosine --warmup_epochs 5 --lr 0.1 \
+    --use_amp --seed 1024
+
+# Extra seeds — LPS
+python -m experiments.train_baseline --dataset cifar100 --model wideresnet \
+    --augmentation tiered_curriculum --tier_schedule lps \
+    --epochs 100 --scheduler cosine --warmup_epochs 5 --lr 0.1 \
+    --use_amp --seed 3407
+python -m experiments.train_baseline --dataset cifar100 --model wideresnet \
+    --augmentation tiered_curriculum --tier_schedule lps \
+    --epochs 100 --scheduler cosine --warmup_epochs 5 --lr 0.1 \
+    --use_amp --seed 1024
+
+# Extra seeds — EGS v2
+python -m experiments.train_baseline --dataset cifar100 --model wideresnet \
+    --augmentation tiered_curriculum --tier_schedule egs \
+    --epochs 100 --scheduler cosine --warmup_epochs 5 --lr 0.1 \
+    --use_amp --seed 3407
+python -m experiments.train_baseline --dataset cifar100 --model wideresnet \
+    --augmentation tiered_curriculum --tier_schedule egs \
+    --epochs 100 --scheduler cosine --warmup_epochs 5 --lr 0.1 \
+    --use_amp --seed 1024
+
 # RandAugment
 --augmentation randaugment --ra_n 2 --ra_m 9 --scheduler cosine --use_amp
 
@@ -244,7 +288,7 @@ python -m experiments.train_baseline --dataset cifar100 --model wideresnet \
 | Task | Uses | Answers | Status |
 |:---|:---|:---|:---:|
 | **Statistical significance (t-test / Wilcoxon)** ⚠️ MVT | 3-seed results | Are observed differences statistically significant? | 📋 |
-| **t-SNE feature visualisation** ⭐ | WRN checkpoints (all 5 methods) | Do curriculum models learn better-separated representations? | 📋 |
+| **t-SNE feature visualisation** ⭐ | WRN checkpoints (all 5 methods) | Do curriculum models learn better-separated representations? | ✅ Sep ratio: NoAug=5.5 · Static=8.4 · EGS=9.9 · LPS=10.6 · ETS=10.8 |
 | **CIFAR-100-C robustness (mCE)** ⭐ | WRN checkpoints | Is the model more robust to natural corruptions? | 📋 |
 | Convergence speed (epochs to 70/75/80%) | History files | Does curriculum reach target accuracy faster? | 📋 |
 | ECE — Expected Calibration Error ⭐ | WRN checkpoints | Does curriculum reduce model overconfidence? | 📋 |
@@ -261,6 +305,10 @@ python -m experiments.train_baseline --dataset cifar100 --model wideresnet \
 # t-SNE feature visualisation (all 5 methods — run on cluster)
 python analysis/tsne_features.py --data_root data --val_split 0.1
 # Output: results/figs/tsne/tsne_grid.png (thesis) + tsne_row.png (slides)
+
+# Statistical significance — Welch's t-test + Cohen's d (run anywhere, no GPU needed)
+python analysis/ttest_significance.py
+# Output: p-values + Cohen's d for all 6 method pairs (update RESULTS dict after adding seeds 7+13)
 
 # Statistical significance — Welch's t-test between ETS and Static Mixing
 # (3-seed results already in thesis_results_tables.md — just run this script)
@@ -318,6 +366,15 @@ python -m experiments.train_baseline --dataset tiny_imagenet --model wideresnet 
     --augmentation tiered_curriculum --tier_schedule lps \
     --epochs 100 --scheduler cosine --warmup_epochs 5 --lr 0.1 \
     --use_amp --seed 42
+
+# CIFAR-100-C robustness (cluster — ~2 hrs, requires dataset download first)
+# Setup:
+#   wget https://zenodo.org/record/3555552/files/CIFAR-100-C.tar
+#   tar -xf CIFAR-100-C.tar -C data/
+python analysis/cifar100c_robustness.py --c_root data/CIFAR-100-C
+# Output: results/logs/cifar100c_YYYYMMDD_HHMMSS.log
+#         results/figs/cifar100c_robustness.png  (150 dpi)
+#         results/figs/cifar100c_robustness_hd.png  (300 dpi)
 ```
 
 ---
@@ -334,8 +391,8 @@ python -m experiments.train_baseline --dataset tiny_imagenet --model wideresnet 
 | 4 | Reverse curriculum | ~135 min | FIT Q105 — single most important ablation | ✅ |
 | 5 | Hard from epoch 1 | ~135 min | MVT — answers "does order matter?" | 📋 |
 | 6 | Random augmentation | ~135 min | Required baseline | 📋 |
-| 7 | **Statistical significance (t-test)** | analysis | MVT — FIT Q50 | 📋 |
-| 8 | **t-SNE feature visualisation** ⭐ | ~30 min | Shows better representations visually | 📋 |
+| 7 | **Statistical significance (t-test)** | analysis | MVT — FIT Q50 | ✅ |
+| 8 | **t-SNE feature visualisation** ⭐ | ~30 min | Shows better representations visually | ✅ |
 | 9 | **CIFAR-100-C robustness** ⭐ | ~2 hrs | Proves generalisation beyond CIFAR-100 test set | 📋 |
 | 10 | CutMix only + MixUp only | ~270 min | FIT Q33 — mixing decomposition | ✅ |
 | 11 | Tiny-ImageNet LPS | ~1069 min | Completes Group H | 📋 |
@@ -355,14 +412,14 @@ python -m experiments.train_baseline --dataset tiny_imagenet --model wideresnet 
 
 | Group | Runs Remaining | Est. Time |
 |:---|:---:|:---:|
-| A — Core | 2 | ~270 min |
+| A — Core | 10 | ~270 min (MVT) + ~1350 min (extra seeds) |
 | B — Scheduler | 3 | ~405 min |
 | C — Mixing | 0 | ✅ complete |
 | D — Curriculum structure | 4 | ~540 min |
 | E — Strength | 4 | ~540 min |
 | F — Tier boundaries | 3 | ~405 min |
 | G — EGS sensitivity | 4 | ~576 min |
-| H — Tiny-ImageNet | 1 | ~1069 min |
+| H — Tiny-ImageNet | 0 | ✅ complete |
 | I — ResNet-50 | 0 | ✅ complete |
 | **Total** | **21 runs** | **~64 hours** |
 
