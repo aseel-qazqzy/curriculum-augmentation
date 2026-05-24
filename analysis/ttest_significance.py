@@ -51,7 +51,7 @@ def significance_stars(p):
 
 def main():
     print(
-        "\nWelch's t-test — WideResNet-28-10 · CIFAR-100 · 19-op · 100ep · seeds 42/123/456\n"
+        "\nWelch's t-test — WideResNet-28-10 · CIFAR-100 · 19-op · 100ep · seeds 42/123/456/3407/1024\n"
     )
 
     # Per-method summary

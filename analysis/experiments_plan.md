@@ -288,7 +288,7 @@ python -m experiments.train_baseline --dataset cifar100 --model wideresnet \
 | Task | Uses | Answers | Status |
 |:---|:---|:---|:---:|
 | **Statistical significance (t-test / Wilcoxon)** ⚠️ MVT | 3-seed results | Are observed differences statistically significant? | 📋 |
-| **t-SNE feature visualisation** ⭐ | WRN checkpoints (all 5 methods) | Do curriculum models learn better-separated representations? | ✅ Sep ratio: NoAug=5.5 · Static=8.4 · EGS=9.9 · LPS=10.6 · ETS=10.8 |
+| **t-SNE feature visualisation** ⭐ | WRN checkpoints (all 5 methods) | Do curriculum models learn better-separated representations? | ✅ Ratio: NoAug=5.49 · Static=8.32 · EGS=9.97 · ETS=10.75 · LPS=10.82 (best) |
 | **CIFAR-100-C robustness (mCE)** ⭐ | WRN checkpoints | Is the model more robust to natural corruptions? | 📋 |
 | Convergence speed (epochs to 70/75/80%) | History files | Does curriculum reach target accuracy faster? | 📋 |
 | ECE — Expected Calibration Error ⭐ | WRN checkpoints | Does curriculum reduce model overconfidence? | 📋 |

@@ -421,20 +421,20 @@
 
 **Separation Ratio = Inter-class centroid distance / Mean intra-class distance. Higher = better-separated feature clusters.**
 
-| Method | Test Top-1 | Sep Ratio (Inter/Intra ↑) | Relative to No Aug |
-|:---|:---:|:---:|:---:|
-| No Augmentation | 72.86% | 5.5 | — |
-| Static Mixing | 77.43% | 8.4 | +2.9× |
-| Tiered EGS v2 | 79.83% | 9.9 | +1.8× |
-| Tiered LPS | 81.36% | 10.6 | +1.9× |
-| **Tiered ETS** | **81.35%** | **10.8** | **+1.96×** |
+| Method | Test Top-1 | Intra ↓ | Inter ↑ | Ratio ↑ | Relative to No Aug |
+|:---|:---:|:---:|:---:|:---:|:---:|
+| No Augmentation | 72.86% | 5.42 | 29.73 | 5.49 | — |
+| Static Mixing | 77.43% | 3.85 | 32.01 | 8.32 | +1.51× |
+| Tiered EGS v2 | 79.83% | 3.23 | 32.25 | 9.97 | +1.82× |
+| Tiered ETS | 81.35% | 2.92 | 31.44 | 10.75 | +1.96× |
+| **Tiered LPS** | **81.36%** | **2.85** | **30.87** | **10.82** | **+1.97×** |
 
-> **Finding 1 — Curriculum nearly doubles representational quality:** ETS achieves a separation ratio of 10.8 vs 5.5 for No Augmentation — a 96% improvement. This demonstrates that curriculum augmentation improves the *geometric quality* of learned representations, not just final accuracy. The clusters of same-class images in feature space are both tighter (lower intra-class variance) and further apart (higher inter-class margin) under curriculum training.
+> **Finding 1 — Curriculum nearly doubles representational quality:** LPS achieves a separation ratio of 10.82 vs 5.49 for No Augmentation — a 97% improvement. This demonstrates that curriculum augmentation improves the *geometric quality* of learned representations, not just final accuracy. The clusters of same-class images in feature space are both tighter (lower intra-class variance) and further apart (higher inter-class margin) under curriculum training.
 >
-> **Finding 2 — Separation ratio tracks accuracy across all methods:** The ordering Static (8.4) < EGS (9.9) < LPS (10.6) ≈ ETS (10.8) mirrors the accuracy ranking (77.43% < 79.83% < 81.36% ≈ 81.35%). This alignment provides geometric evidence that the accuracy improvements are grounded in better feature learning, not decision boundary tuning.
+> **Finding 2 — Separation ratio tracks accuracy across all methods:** The ordering Static (8.32) < EGS (9.97) < ETS (10.75) ≈ LPS (10.82) mirrors the accuracy ranking (77.43% < 79.83% < 81.35% ≈ 81.36%). This alignment provides geometric evidence that the accuracy improvements are grounded in better feature learning, not decision boundary tuning.
 >
-> **Finding 3 — EGS looser clusters explain its accuracy gap:** EGS's separation ratio (9.9) is 8.3% below ETS (10.8), correlating with its 1.52pp accuracy deficit. The per-sample scheduling in EGS delays reaching full Tier 3 exposure (epoch ~89 average vs epoch 46 for ETS), giving the model fewer epochs to learn tight discriminative representations under the hardest augmentations.
+> **Finding 3 — EGS has widest class separation (Inter=32.25) but looser clusters:** EGS pushes class centres furthest apart yet has worse intra-class cohesion (3.23 vs 2.85 for LPS), explaining its lower ratio (9.97) and 1.52pp accuracy deficit. The per-sample scheduling delays full Tier 3 exposure, giving the model fewer epochs to tighten within-class representations.
 >
-> **Finding 4 — Static Mixing vs curriculum representational gap:** Even with CutMix/MixUp from epoch 1, Static Mixing achieves a separation ratio of only 8.4 — well below ETS (10.8). The 2.4-point gap in separation ratio corresponds to the 3.92pp accuracy gap, confirming that forcing aggressive augmentation from the start prevents stable feature formation, and that the curriculum's value is specifically in *when* hard augmentation is introduced.
+> **Finding 4 — Static Mixing vs curriculum representational gap:** Even with CutMix/MixUp from epoch 1, Static Mixing achieves a separation ratio of only 8.32 — well below LPS/ETS (10.82/10.75). The 2.5-point gap in separation ratio corresponds to the 4.01pp accuracy gap, confirming that forcing aggressive augmentation from the start prevents stable feature formation, and that the curriculum's value is specifically in *when* hard augmentation is introduced.
 
 ---
