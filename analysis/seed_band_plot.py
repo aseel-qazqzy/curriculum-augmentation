@@ -506,8 +506,9 @@ def fig_tier_zoom(md, zoom=(10, 62), fname="fig_tier_zoom.png"):
 
 def fig_seed_distribution(md, fname="fig_seed_distribution.png"):
     """
-    Box plot + individual seed dots of best val accuracy per method.
-    Shows the improvement is consistent across all seeds, not a lucky outlier.
+    Bar + seed-dot overlay per method.
+    Bar = mean (low alpha fill).  Bold hline = mean.  Dots = individual seeds.
+    Thin error bar (no caps) = ±1σ.
     """
     multi = {k: v for k, v in md.items() if v["n_seeds"] > 1}
     if not multi:
@@ -518,103 +519,94 @@ def fig_seed_distribution(md, fname="fig_seed_distribution.png"):
     names = list(multi.keys())
     colors = [multi[n]["cfg"]["color"] for n in names]
     data = [[float(np.max(c)) for c in multi[n]["curves"]] for n in names]
+    means = [float(np.mean(d)) for d in data]
+    stds = [float(np.std(d, ddof=1)) if len(d) > 1 else 0.0 for d in data]
 
-    fig, ax = plt.subplots(figsize=(9, 5.5))
+    all_vals = [v for d in data for v in d]
+    ylo = min(all_vals) - 0.8
+    yhi = max(all_vals) + 3.0
+
+    fig, ax = plt.subplots(figsize=(10, 5.5))
     fig.suptitle(
-        "Seed Consistency — Best Val Accuracy  ·  5 Seeds  ·  CIFAR-100  ·  WideResNet-28-10\n"
-        "Each dot = one seed run.  Error bar = mean ± 1σ.  "
-        "Tight spread confirms results are not driven by a lucky seed.",
-        fontsize=9,
+        "Seed Consistency — Best Val Accuracy  ·  5 Seeds  ·  CIFAR-100  ·  WideResNet-28-10",
+        fontsize=10,
         fontweight="bold",
     )
 
-    all_vals = [v for d in data for v in d]
-    ylo = min(all_vals) - 1.2
-    yhi = max(all_vals) + 1.8
+    x_pos = np.arange(len(names))
+    bar_w = 0.55
+    static_mu = means[0]
 
-    x_positions = np.arange(1, len(names) + 1)
-
-    for xi, (d, color) in enumerate(zip(data, colors)):
-        xc = x_positions[xi]
-        mu = float(np.mean(d))
-        std = float(np.std(d, ddof=1)) if len(d) > 1 else 0.0
-
-        # ±1σ error bar
-        ax.errorbar(
-            xc,
-            mu,
-            yerr=std,
-            fmt="none",
-            ecolor=color,
-            elinewidth=3.0,
-            capsize=10,
-            capthick=3.0,
-            zorder=3,
-        )
-
-        # mean marker
-        ax.scatter(
-            [xc],
-            [mu],
+    for xi, (d, mu, std, color) in enumerate(zip(data, means, stds, colors)):
+        # filled bar from ylo to mean (low alpha for background effect)
+        ax.bar(
+            xi,
+            mu - ylo,
+            bottom=ylo,
+            width=bar_w,
             color=color,
-            s=180,
-            zorder=5,
-            edgecolors="black",
-            linewidths=1.2,
-            marker="D",
-            label=names[xi],
+            alpha=0.20,
+            edgecolor=color,
+            linewidth=1.5,
+            zorder=1,
         )
 
-        # individual seed dots with jitter
-        jitter = rng.uniform(-0.18, 0.18, len(d))
+        # bold mean line spanning the bar width
+        ax.hlines(
+            mu,
+            xi - bar_w / 2 + 0.02,
+            xi + bar_w / 2 - 0.02,
+            color=color,
+            linewidth=3.0,
+            zorder=4,
+        )
+
+        # thin ±1σ line, no caps
+        ax.vlines(xi, mu - std, mu + std, color="black", linewidth=1.8, zorder=3)
+
+        # individual seed dots, jittered
+        jitter = rng.uniform(-0.13, 0.13, len(d))
         ax.scatter(
-            [xc + j for j in jitter],
+            x_pos[xi] + jitter,
             d,
             color=color,
             s=90,
-            zorder=4,
-            edgecolors="black",
-            linewidths=0.8,
-            alpha=0.75,
+            zorder=5,
+            edgecolors="white",
+            linewidths=1.2,
         )
 
-        # label: mean ± std above error bar
+        # label above the ±1σ top
+        delta_str = f"\nvs Static +{mu - static_mu:.2f} pp" if xi > 0 else ""
         ax.text(
-            xc,
-            mu + std + 0.18,
-            f"μ = {mu:.2f}%\n± {std:.2f} pp",
+            xi,
+            mu + std + 0.45,
+            f"{mu:.2f}% ± {std:.2f}{delta_str}",
             ha="center",
             va="bottom",
-            fontsize=9,
+            fontsize=8.5,
             fontweight="bold",
             color=color,
         )
 
-    # Δ vs Static bracket annotations
-    static_mu = float(np.mean(data[0]))
-    for xi, (d, color, name) in enumerate(
-        zip(data[1:], colors[1:], names[1:]), start=1
-    ):
-        xc = x_positions[xi]
-        mu = float(np.mean(d))
-        delta = mu - static_mu
-        ax.annotate(
-            f"Δ = +{delta:.2f} pp",
-            xy=(xc, mu),
-            xytext=(xc + 0.28, mu),
-            fontsize=8,
-            color=color,
-            va="center",
-            arrowprops=None,
-        )
-
     short = [n.replace(" (ours)", "").replace(" v2", "") for n in names]
-    ax.set_xticks(x_positions)
-    ax.set_xticklabels(short, fontsize=11)
-    ax.set_xlim(0.4, len(names) + 0.8)
+    ax.set_xticks(x_pos)
+    ax.set_xticklabels(short, fontsize=12)
+    ax.set_xlim(-0.55, len(names) - 0.45)
     ax.set_ylabel("Best Validation Accuracy (%)", fontsize=10)
     ax.set_ylim(ylo, yhi)
     ax.yaxis.set_major_locator(MaxNLocator(nbins=6))
+    ax.text(
+        0.99,
+        0.02,
+        "● individual seed   — mean   | ±1σ",
+        transform=ax.transAxes,
+        ha="right",
+        va="bottom",
+        fontsize=8,
+        color="#777777",
+        style="italic",
+    )
 
     plt.tight_layout()
     save_fig(fig, fname)
