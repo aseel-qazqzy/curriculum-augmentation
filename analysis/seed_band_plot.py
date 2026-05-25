@@ -446,7 +446,7 @@ def fig_tier_zoom(md, zoom=(10, 62), fname="fig_tier_zoom.png"):
         if len(xz) == 0:
             continue
 
-        ax.fill_between(xz, mz - sz, mz + sz, alpha=0.18, color=cfg["color"])
+        ax.fill_between(xz, mz - sz, mz + sz, alpha=0.35, color=cfg["color"])
         ax.plot(
             xz, mz, color=cfg["color"], lw=cfg["lw"], ls=cfg["ls"], label=method_name
         )
@@ -540,15 +540,16 @@ def fig_seed_distribution(md, fname="fig_seed_distribution.png"):
     bp = ax.boxplot(
         data,
         patch_artist=True,
-        widths=0.45,
-        medianprops=dict(color="black", linewidth=1.8),
-        whiskerprops=dict(linewidth=1.0),
-        capprops=dict(linewidth=1.0),
+        widths=0.55,
+        medianprops=dict(color="black", linewidth=2.5),
+        whiskerprops=dict(linewidth=2.0),
+        capprops=dict(linewidth=2.0),
+        boxprops=dict(linewidth=2.0),
         flierprops=dict(marker="o", markersize=4, alpha=0.6),
     )
     for patch, color in zip(bp["boxes"], colors):
         patch.set_facecolor(color)
-        patch.set_alpha(0.60)
+        patch.set_alpha(0.85)
         patch.set_edgecolor("black")
 
     for i, (d, color) in enumerate(zip(data, colors), start=1):
