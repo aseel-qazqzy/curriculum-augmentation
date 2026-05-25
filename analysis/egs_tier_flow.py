@@ -68,8 +68,6 @@ _RE_UPDATE_LINE = re.compile(
     r"EGS tiers\s*[—-]\s*Tier1:\s*([\d,]+)\s+Tier2:\s*([\d,]+)\s+Tier3:\s*([\d,]+)"
 )
 _RE_MIX_LINE = re.compile(r"mix:both")
-_RE_TOTAL = re.compile(r"Train:\s+\d+\s+\|\s+Val:\s+\d+")
-_RE_TRAIN_SIZE = re.compile(r"Train:\s+(\d+)")
 
 
 def parse_log(path: str):
@@ -77,16 +75,9 @@ def parse_log(path: str):
     records = {}  # epoch → (t1, t2, t3)
     mix_epoch = None
     current_epoch = None
-    n_total = None
 
     with open(path) as f:
         for line in f:
-            # detect training set size
-            if n_total is None:
-                m = _RE_TRAIN_SIZE.search(line)
-                if m and "CIFAR" in line or "loaded" in line.lower():
-                    n_total = int(m.group(1))
-
             # epoch summary line — most reliable epoch anchor
             m = _RE_EPOCH_LINE.search(line)
             if m:
