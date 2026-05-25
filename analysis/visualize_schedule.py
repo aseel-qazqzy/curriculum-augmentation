@@ -321,8 +321,8 @@ def fig_lr_and_difficulty(fname="figS3_lr_difficulty_combined.png"):
     # Annotations
     ax2.annotate(
         "Hard samples\nbegin dominating",
-        xy=(100, diff[99]),
-        xytext=(75, 0.55),
+        xy=(N_EPOCHS, diff[-1]),
+        xytext=(int(N_EPOCHS * 0.75), 0.55),
         fontsize=9,
         color=PALETTE["cl"],
         fontweight="bold",
@@ -332,8 +332,8 @@ def fig_lr_and_difficulty(fname="figS3_lr_difficulty_combined.png"):
 
     ax1.annotate(
         "LR = 0.001\nstill trainable",
-        xy=(112, lr[111]),
-        xytext=(85, 0.003),
+        xy=(N_EPOCHS, lr[-1]),
+        xytext=(int(N_EPOCHS * 0.75), 0.003),
         fontsize=9,
         color=PALETTE["lr"],
         fontweight="bold",
