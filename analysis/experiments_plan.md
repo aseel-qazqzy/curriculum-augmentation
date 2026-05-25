@@ -37,6 +37,8 @@ Sources: FIT presentation, FIT Q&A (105 questions), session discussions  |  Upda
 | Tiered EGS (19-op, _TIER_OPS fix, thresh050, 150ep) | G | 3 | W | 19 | CIFAR-100 | pending — run next |
 | EGS opt Config 3 (old code, s42) | G | 1 | W | 19 | CIFAR-100 | done — 80.68% — fixed epoch, old ops |
 | ETS 150 epochs (14-op) | E | 3 | W | 14 | CIFAR-100 | partial |
+| **ETS 200 epochs (19-op) — val_split=0 — s42** | E | 1 | W | 19 | CIFAR-100 | done — 83.52% · 264 min |
+| **ETS 200 epochs (19-op) — val_split=0 — s123** | E | 1 | W | 19 | CIFAR-100 | done — 83.14% · 271.5 min · Top-5: 96.30% |
 | **RandAugment N=2, M=9** (required) | — | 1 | W | — | CIFAR-100 | pending |
 | **Random Aug (same pool, no ordering)** (required) | — | 1 | W | 19 | CIFAR-100 | pending |
 | **TrivialAugment** baseline | — | 1 | W | — | CIFAR-100 | pending — needs implementation check |
@@ -270,7 +272,7 @@ python -m experiments.train_baseline --dataset cifar100 --model wideresnet \
 | No Augmentation | — | 1 | W | — | Tiny-ImageNet | done — 63.46% s42 · 1043 min |
 | Static Mixing | — | 1 | W | 19 | Tiny-ImageNet | done — 66.88% s42 · 1069 min |
 | Tiered ETS | E | 1 | W | 19 | Tiny-ImageNet | done — 69.16% s42 · 1032 min (+2.28pp vs static) |
-| Tiered LPS | L | 1 | W | 19 | Tiny-ImageNet | pending |
+| Tiered LPS | L | 1 | W | 19 | Tiny-ImageNet | done — 69.47% s42 · T1→T2 ep19 · T2→T3 ep39 · 1016 min |
 
 **Answers:** Does the curriculum benefit hold on a harder dataset (200 classes, 64×64)? Does the method scale beyond CIFAR-100?
 
