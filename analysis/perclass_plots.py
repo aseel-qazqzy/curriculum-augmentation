@@ -825,14 +825,20 @@ def fig_regressions(n=10):
         ax.xaxis.grid(True, linestyle="--", alpha=0.4)
         ax.set_axisbelow(True)
 
+        min_v = min(vals)
+        ax.set_xlim(min_v - 0.5, 0.8)
+
         for bar, v in zip(bars, vals):
+            # place label in the middle of the bar
             ax.text(
-                v - 0.3,
+                v / 2,
                 bar.get_y() + bar.get_height() / 2,
                 f"{v:.0f}pp",
                 va="center",
-                ha="right",
+                ha="center",
                 fontsize=8,
+                color="white",
+                fontweight="bold",
             )
 
     plt.tight_layout()

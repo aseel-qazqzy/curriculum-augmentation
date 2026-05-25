@@ -1,6 +1,6 @@
 # Experiments Plan
 
-Sources: FIT presentation, FIT Q&A (105 questions), session discussions  |  Updated: 2026-05-24
+Sources: FIT presentation, FIT Q&A (105 questions), session discussions  |  Updated: 2026-05-25
 
 ---
 
@@ -10,7 +10,7 @@ Sources: FIT presentation, FIT Q&A (105 questions), session discussions  |  Upda
 |:---|:---|
 | E / L / G | ETS / LPS / EGS |
 | W / R | WideResNet-28-10 / ResNet-50 |
-| 3 / 1 | 3-seed sweep / single seed |
+| 5 / 3 / 1 | 5-seed sweep / 3-seed sweep / single seed |
 | done | experiment complete |
 | partial | some seeds done, others pending |
 | pending | not yet run |
@@ -65,7 +65,7 @@ Sources: FIT presentation, FIT Q&A (105 questions), session discussions  |  Upda
 | TrivialAugment | 82.5% | 200 | Müller & Hutter, 2021 |
 | AugMix | 80.9% | 200 | Hendrycks et al., 2020 |
 
-> ETS at 100 epochs: 81.39% ± 0.23%. AugMix at 200ep: 80.9%. AutoAugment/TrivialAugment at 200ep: 82.5–82.9%.
+> ETS at 100ep: 81.39% ± 0.23%. ETS at 200ep full-train (s42): 83.52% — beats RandAugment (83.3%), AutoAugment (82.9%), TrivialAugment (82.5%), AugMix (80.9%).
 
 ```bash
 # Extra seeds — Static Mixing
@@ -432,8 +432,8 @@ python analysis/cifar100c_robustness.py --c_root data/CIFAR-100-C
 | 10 | CutMix only + MixUp only | ~270 min | FIT Q33 — mixing decomposition | done |
 | 11 | Tiny-ImageNet ETS + LPS | ~1069 min | Cross-dataset generalisation | done |
 | 12 | ResNet-50 × 4 | ~540 min | FIT primary backbone | done |
-| 13 | **ETS 200 epochs** | ~270 min | Match published 200ep baselines | pending |
-| 14 | **LPS 200 epochs** | ~270 min | Match published 200ep baselines | pending |
+| 13 | **ETS 200 epochs** | 276 min | Match published 200ep baselines | done — 83.52% s42 (val_split=0.0) · beats RandAugment +0.22pp · beats AutoAugment +0.62pp |
+| 14 | **LPS 200 epochs** | 262 min | Inter-method comparison at 200ep | done — 82.52% s42 (val_split=0.1) · T1→T2 ep30 · T2→T3 ep40 · Δ=0.05pp vs ETS |
 | 15 | **TrivialAugment** | ~135 min | Standard 2021 baseline — needs implementation | pending |
 | 16 | **AutoAugment** | ~135 min | Gold standard baseline — needs implementation | pending |
 | 17 | MultiStep scheduler × 3 | ~405 min | Committee will ask why cosine was chosen | pending |
