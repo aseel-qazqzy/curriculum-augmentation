@@ -364,29 +364,19 @@ def fig_seed_bands(md, fname="fig_seed_bands.png"):
     )
 
     for bar, bm, bs, name in zip(bars, best_means, best_stds, names):
-        # value label above bar
+        stat_line = ""
+        if name in STATS:
+            s = STATS[name]
+            stat_line = f"\np{s['p']}  d={s['d']}  {s['delta']}"
         ax_right.text(
             bar.get_x() + bar.get_width() / 2,
-            bm + bs + 0.35,
-            f"{bm:.2f}%\n±{bs:.2f}",
+            bm + bs + 0.25,
+            f"{bm:.2f}% ±{bs:.2f}{stat_line}",
             ha="center",
             va="bottom",
             fontsize=7,
             fontweight="bold",
         )
-        # stat annotation inside bar
-        if name in STATS:
-            s = STATS[name]
-            ax_right.text(
-                bar.get_x() + bar.get_width() / 2,
-                bm * 0.50,
-                f"p{s['p']}\nd={s['d']}\n{s['delta']}",
-                ha="center",
-                va="center",
-                fontsize=6.5,
-                color="white",
-                fontweight="bold",
-            )
 
     short = [n.replace(" (ours)", "").replace(" v2", "") for n in names]
     ax_right.set_xticks(x_pos)
@@ -524,65 +514,106 @@ def fig_seed_distribution(md, fname="fig_seed_distribution.png"):
         print("  fig_seed_distribution: need ≥2 seeds per method — skipping.")
         return
 
-    rng = np.random.RandomState(0)
+    rng = np.random.default_rng(0)
     names = list(multi.keys())
     colors = [multi[n]["cfg"]["color"] for n in names]
     data = [[float(np.max(c)) for c in multi[n]["curves"]] for n in names]
 
-    fig, ax = plt.subplots(figsize=(7.5, 4.2))
+    fig, ax = plt.subplots(figsize=(9, 5.5))
     fig.suptitle(
-        "Seed Consistency — Best Val Accuracy Distribution  ·  5 Seeds  ·  CIFAR-100  ·  WideResNet-28-10\n"
-        "Narrow boxes confirm the curriculum advantage is not driven by a lucky seed",
+        "Seed Consistency — Best Val Accuracy  ·  5 Seeds  ·  CIFAR-100  ·  WideResNet-28-10\n"
+        "Each dot = one seed run.  Error bar = mean ± 1σ.  "
+        "Tight spread confirms results are not driven by a lucky seed.",
         fontsize=9,
         fontweight="bold",
     )
 
-    bp = ax.boxplot(
-        data,
-        patch_artist=True,
-        widths=0.55,
-        medianprops=dict(color="black", linewidth=2.5),
-        whiskerprops=dict(linewidth=2.0),
-        capprops=dict(linewidth=2.0),
-        boxprops=dict(linewidth=2.0),
-        flierprops=dict(marker="o", markersize=4, alpha=0.6),
-    )
-    for patch, color in zip(bp["boxes"], colors):
-        patch.set_facecolor(color)
-        patch.set_alpha(0.85)
-        patch.set_edgecolor("black")
+    all_vals = [v for d in data for v in d]
+    ylo = min(all_vals) - 1.2
+    yhi = max(all_vals) + 1.8
 
-    for i, (d, color) in enumerate(zip(data, colors), start=1):
-        jitter = rng.uniform(-0.13, 0.13, len(d))
-        ax.scatter(
-            [i + j for j in jitter],
-            d,
-            color=color,
-            s=38,
-            zorder=5,
-            edgecolors="black",
-            linewidths=0.5,
-            alpha=0.90,
-        )
+    x_positions = np.arange(1, len(names) + 1)
+
+    for xi, (d, color) in enumerate(zip(data, colors)):
+        xc = x_positions[xi]
         mu = float(np.mean(d))
         std = float(np.std(d, ddof=1)) if len(d) > 1 else 0.0
+
+        # ±1σ error bar
+        ax.errorbar(
+            xc,
+            mu,
+            yerr=std,
+            fmt="none",
+            ecolor=color,
+            elinewidth=3.0,
+            capsize=10,
+            capthick=3.0,
+            zorder=3,
+        )
+
+        # mean marker
+        ax.scatter(
+            [xc],
+            [mu],
+            color=color,
+            s=180,
+            zorder=5,
+            edgecolors="black",
+            linewidths=1.2,
+            marker="D",
+            label=names[xi],
+        )
+
+        # individual seed dots with jitter
+        jitter = rng.uniform(-0.18, 0.18, len(d))
+        ax.scatter(
+            [xc + j for j in jitter],
+            d,
+            color=color,
+            s=90,
+            zorder=4,
+            edgecolors="black",
+            linewidths=0.8,
+            alpha=0.75,
+        )
+
+        # label: mean ± std above error bar
         ax.text(
-            i,
-            max(d) + 0.18,
-            f"μ={mu:.2f}\n±{std:.2f}",
+            xc,
+            mu + std + 0.18,
+            f"μ = {mu:.2f}%\n± {std:.2f} pp",
             ha="center",
             va="bottom",
-            fontsize=7,
+            fontsize=9,
             fontweight="bold",
             color=color,
         )
 
+    # Δ vs Static bracket annotations
+    static_mu = float(np.mean(data[0]))
+    for xi, (d, color, name) in enumerate(
+        zip(data[1:], colors[1:], names[1:]), start=1
+    ):
+        xc = x_positions[xi]
+        mu = float(np.mean(d))
+        delta = mu - static_mu
+        ax.annotate(
+            f"Δ = +{delta:.2f} pp",
+            xy=(xc, mu),
+            xytext=(xc + 0.28, mu),
+            fontsize=8,
+            color=color,
+            va="center",
+            arrowprops=None,
+        )
+
     short = [n.replace(" (ours)", "").replace(" v2", "") for n in names]
-    ax.set_xticks(range(1, len(names) + 1))
-    ax.set_xticklabels(short, rotation=10, ha="right")
-    ax.set_ylabel("Best Validation Accuracy (%)")
-    all_vals = [v for d in data for v in d]
-    ax.set_ylim(max(0, min(all_vals) - 2), min(100, max(all_vals) + 2.5))
+    ax.set_xticks(x_positions)
+    ax.set_xticklabels(short, fontsize=11)
+    ax.set_xlim(0.4, len(names) + 0.8)
+    ax.set_ylabel("Best Validation Accuracy (%)", fontsize=10)
+    ax.set_ylim(ylo, yhi)
     ax.yaxis.set_major_locator(MaxNLocator(nbins=6))
 
     plt.tight_layout()
