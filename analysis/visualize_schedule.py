@@ -56,22 +56,42 @@ PALETTE = {
 }
 
 N_EPOCHS = 100
-MILESTONES = [
-    int(N_EPOCHS * 0.33),
-    int(N_EPOCHS * 0.66),
-    int(N_EPOCHS * 0.83),
-]  # [33, 66, 83]
+
+# Actual ETS tier boundaries (t1=0.20, t2=0.45)
+TIER_T1 = int(N_EPOCHS * 0.20)  # epoch 20
+TIER_T2 = int(N_EPOCHS * 0.45)  # epoch 45
+STRENGTH_RAMP = 5  # epochs for linear ramp at each boundary
+TIER_STRENGTHS = (0.40, 0.70, 1.00)  # Tier 1/2/3 as fraction of strength ceiling
 
 
 # CURRICULUM SCHEDULES
-def loss_guided_difficulty(epoch, n=N_EPOCHS):
+def ets_difficulty(epoch, n=N_EPOCHS, t1=0.20, t2=0.45, ramp=STRENGTH_RAMP):
     """
-    Loss-guided CL: fraction of hard samples in each mini-batch.
-    Starts at 0 (all easy), ramps to 1 (full difficulty) by end.
-    Using a sigmoid ramp centred at epoch 75.
+    Actual ETS schedule used in all experiments.
+    Tier strengths: 40% / 70% / 100% of ceiling.
+    5-epoch linear ramp at each tier boundary.
     """
-    t = (epoch - n * 0.5) / (n * 0.12)
-    return float(1 / (1 + np.exp(-t)))
+    ep1 = int(n * t1)
+    ep2 = int(n * t2)
+    s1, s2, s3 = TIER_STRENGTHS
+    if epoch <= ep1:
+        return s1
+    elif epoch <= ep1 + ramp:
+        return s1 + (epoch - ep1) / ramp * (s2 - s1)
+    elif epoch <= ep2:
+        return s2
+    elif epoch <= ep2 + ramp:
+        return s2 + (epoch - ep2) / ramp * (s3 - s2)
+    else:
+        return s3
+
+
+def cosine_lr(epoch, n=N_EPOCHS, lr_init=0.1, eta_min=1e-6, warmup=5):
+    """CosineAnnealingLR + linear warmup — matches actual training runs."""
+    if epoch <= warmup:
+        return lr_init * (0.1 + 0.9 * epoch / warmup)
+    t = (epoch - warmup) / max(1, n - warmup)
+    return eta_min + 0.5 * (lr_init - eta_min) * (1 + np.cos(np.pi * t))
 
 
 def linear_difficulty(epoch, n=N_EPOCHS):
@@ -98,7 +118,7 @@ def aug_params_over_time(epochs):
     Simulate how individual augmentation parameters scale with CL difficulty.
     Returns dict of param_name → list of values per epoch.
     """
-    diff = np.array([loss_guided_difficulty(e, epochs[-1]) for e in epochs])
+    diff = np.array([ets_difficulty(e, epochs[-1]) for e in epochs])
 
     return {
         "ColorJitter brightness": 0.1 + 0.5 * diff,
@@ -114,15 +134,15 @@ def fig_schedule_comparison(fname="figS1_schedule_comparison.png"):
     epochs = np.arange(1, N_EPOCHS + 1)
     fig, axes = plt.subplots(1, 2, figsize=(14, 5))
     fig.suptitle(
-        "Curriculum Learning Schedule Comparison — CIFAR-10",
+        "Curriculum Learning Schedule Comparison — CIFAR-100",
         fontsize=13,
         fontweight="bold",
         y=1.01,
     )
 
     schedules = {
-        "Loss-Guided (ours)": (
-            [loss_guided_difficulty(e) for e in epochs],
+        "ETS (ours)": (
+            [ets_difficulty(e) for e in epochs],
             PALETTE["cl"],
             "-",
             2.8,
@@ -145,16 +165,12 @@ def fig_schedule_comparison(fname="figS1_schedule_comparison.png"):
     for label, (vals, color, ls, lw) in schedules.items():
         axes[0].plot(epochs, vals, color=color, lw=lw, ls=ls, label=label)
 
-    # Shade phases
-    axes[0].axvspan(1, MILESTONES[0], alpha=0.06, color=PALETTE["easy"], label="_")
-    axes[0].axvspan(
-        MILESTONES[0], MILESTONES[1], alpha=0.06, color=PALETTE["medium"], label="_"
-    )
-    axes[0].axvspan(
-        MILESTONES[1], N_EPOCHS, alpha=0.06, color=PALETTE["hard"], label="_"
-    )
+    # Shade tiers
+    axes[0].axvspan(1, TIER_T1, alpha=0.06, color=PALETTE["easy"], label="_")
+    axes[0].axvspan(TIER_T1, TIER_T2, alpha=0.06, color=PALETTE["medium"], label="_")
+    axes[0].axvspan(TIER_T2, N_EPOCHS, alpha=0.06, color=PALETTE["hard"], label="_")
 
-    for m in MILESTONES:
+    for m in [TIER_T1, TIER_T2]:
         axes[0].axvline(m, color="#888888", lw=1.0, ls=":", alpha=0.4)
 
     axes[0].set_xlabel("Epoch", labelpad=6)
@@ -176,11 +192,11 @@ def fig_schedule_comparison(fname="figS1_schedule_comparison.png"):
     axes[1].legend(loc="upper left", fontsize=9)
     axes[1].xaxis.set_major_locator(MaxNLocator(integer=True, nbins=8))
 
-    # Phase labels on both axes
+    # Tier labels on both axes
     phase_labels = [
-        (1, MILESTONES[0], "Easy", PALETTE["easy"]),
-        (MILESTONES[0], MILESTONES[1], "Medium", PALETTE["medium"]),
-        (MILESTONES[1], N_EPOCHS, "Hard", PALETTE["hard"]),
+        (1, TIER_T1, "Tier 1", PALETTE["easy"]),
+        (TIER_T1, TIER_T2, "Tier 2", PALETTE["medium"]),
+        (TIER_T2, N_EPOCHS, "Tier 3", PALETTE["hard"]),
     ]
     for ax in axes:
         for start, end, label, color in phase_labels:
@@ -211,7 +227,7 @@ def fig_aug_params(fname="figS2_aug_params.png"):
 
     fig, axes = plt.subplots(1, 2, figsize=(14, 5))
     fig.suptitle(
-        "Augmentation Parameter Progression — Loss-Guided CL Schedule",
+        "Augmentation Parameter Progression — ETS 3-Tier Curriculum Schedule",
         fontsize=13,
         fontweight="bold",
         y=1.01,
@@ -222,7 +238,7 @@ def fig_aug_params(fname="figS2_aug_params.png"):
         norm = (np.array(vals) - np.min(vals)) / (np.max(vals) - np.min(vals) + 1e-8)
         axes[0].plot(epochs, norm, color=colors[i], lw=2.0, label=name)
 
-    for m in MILESTONES:
+    for m in [TIER_T1, TIER_T2]:
         axes[0].axvline(m, color="#888888", lw=1.0, ls=":", alpha=0.4)
 
     axes[0].set_xlabel("Epoch", labelpad=6)
@@ -261,7 +277,7 @@ def fig_aug_params(fname="figS2_aug_params.png"):
         label="Rotation ° (right)",
     )
 
-    for m in MILESTONES:
+    for m in [TIER_T1, TIER_T2]:
         ax2.axvline(m, color="#888888", lw=1.0, ls=":", alpha=0.4)
 
     ax2.set_xlabel("Epoch", labelpad=6)
@@ -289,16 +305,12 @@ def fig_aug_params(fname="figS2_aug_params.png"):
 def fig_lr_and_difficulty(fname="figS3_lr_difficulty_combined.png"):
     epochs = np.arange(1, N_EPOCHS + 1)
 
-    # MultiStepLR
-    lr = np.full(N_EPOCHS, 0.1)
-    for m in MILESTONES:
-        lr[m:] *= 0.1
-
-    diff = np.array([loss_guided_difficulty(e) for e in epochs])
+    lr = np.array([cosine_lr(e) for e in epochs])
+    diff = np.array([ets_difficulty(e) for e in epochs])
 
     fig, ax1 = plt.subplots(figsize=(13, 5))
     fig.suptitle(
-        "Learning Rate & CL Difficulty Schedule — Combined View  ·  MultiStepLR + Loss-Guided CL",
+        "Learning Rate & CL Difficulty Schedule — Combined View  ·  CosineAnnealingLR + ETS 3-Tier CL",
         fontsize=13,
         fontweight="bold",
     )
@@ -309,18 +321,18 @@ def fig_lr_and_difficulty(fname="figS3_lr_difficulty_combined.png"):
     ax2.plot(epochs, diff, color=PALETTE["cl"], lw=2.5, label="CL Difficulty (right)")
     ax2.fill_between(epochs, 0, diff, alpha=0.08, color=PALETTE["cl"])
 
-    # Phase shading
-    ax1.axvspan(1, MILESTONES[0], alpha=0.05, color=PALETTE["easy"])
-    ax1.axvspan(MILESTONES[0], MILESTONES[1], alpha=0.05, color=PALETTE["medium"])
-    ax1.axvspan(MILESTONES[1], N_EPOCHS, alpha=0.05, color=PALETTE["hard"])
+    # Tier shading
+    ax1.axvspan(1, TIER_T1, alpha=0.05, color=PALETTE["easy"])
+    ax1.axvspan(TIER_T1, TIER_T2, alpha=0.05, color=PALETTE["medium"])
+    ax1.axvspan(TIER_T2, N_EPOCHS, alpha=0.05, color=PALETTE["hard"])
 
-    for i, m in enumerate(MILESTONES):
+    for m in [TIER_T1, TIER_T2]:
         ax1.axvline(m, color="#888888", lw=1.2, ls=":", alpha=0.5)
         ax1.text(m + 1, 0.085, f"ep {m}", fontsize=8, color="#888888")
 
     # Annotations
     ax2.annotate(
-        "Hard samples\nbegin dominating",
+        "Tier 3 active\n(full augmentation)",
         xy=(N_EPOCHS, diff[-1]),
         xytext=(int(N_EPOCHS * 0.75), 0.55),
         fontsize=9,
@@ -331,7 +343,7 @@ def fig_lr_and_difficulty(fname="figS3_lr_difficulty_combined.png"):
     )
 
     ax1.annotate(
-        "LR = 0.001\nstill trainable",
+        "LR ≈ 0\n(cosine end)",
         xy=(N_EPOCHS, lr[-1]),
         xytext=(int(N_EPOCHS * 0.75), 0.003),
         fontsize=9,
@@ -341,11 +353,11 @@ def fig_lr_and_difficulty(fname="figS3_lr_difficulty_combined.png"):
         bbox=dict(boxstyle="round,pad=0.28", fc="white", ec=PALETTE["lr"], alpha=0.9),
     )
 
-    # Phase labels
+    # Tier labels
     for start, end, label, color in [
-        (1, MILESTONES[0], "Easy Phase", PALETTE["easy"]),
-        (MILESTONES[0], MILESTONES[1], "Medium Phase", PALETTE["medium"]),
-        (MILESTONES[1], N_EPOCHS, "Hard Phase", PALETTE["hard"]),
+        (1, TIER_T1, "Tier 1", PALETTE["easy"]),
+        (TIER_T1, TIER_T2, "Tier 2", PALETTE["medium"]),
+        (TIER_T2, N_EPOCHS, "Tier 3", PALETTE["hard"]),
     ]:
         ax1.text(
             (start + end) / 2,
@@ -390,32 +402,42 @@ def fig_lr_and_difficulty(fname="figS3_lr_difficulty_combined.png"):
 def print_schedule_analysis():
     W = 80
     print(f"\n{'═' * W}")
-    print("  CL SCHEDULE ANALYSIS  ·  Loss-Guided Curriculum  ·  150 epochs")
+    print(f"  CL SCHEDULE ANALYSIS  ·  ETS 3-Tier Curriculum  ·  {N_EPOCHS} epochs")
     print(f"{'═' * W}\n")
 
     epochs = list(range(1, N_EPOCHS + 1))
-    diff = [loss_guided_difficulty(e) for e in epochs]
-    checkpoints = [1, 10, 25, 49, 50, 75, 99, 100, 124, 125, 150]
+    diff = [ets_difficulty(e) for e in epochs]
+    # checkpoints: tier boundaries + even fractions, all clamped to [1, N_EPOCHS]
+    raw = [
+        1,
+        int(N_EPOCHS * 0.10),
+        TIER_T1,
+        TIER_T1 + STRENGTH_RAMP,
+        int(N_EPOCHS * 0.35),
+        TIER_T2,
+        TIER_T2 + STRENGTH_RAMP,
+        int(N_EPOCHS * 0.75),
+        N_EPOCHS,
+    ]
+    checkpoints = sorted(set(max(1, min(e, N_EPOCHS)) for e in raw))
 
-    print(f"  {'Epoch':>6}  {'Difficulty':>11}  {'Phase':>12}  {'Augmentation Level'}")
+    print(f"  {'Epoch':>6}  {'Difficulty':>11}  {'Tier':>8}  {'Augmentation Level'}")
     print("  " + "─" * 65)
 
     for ep in checkpoints:
         d = diff[ep - 1]
-        if ep <= MILESTONES[0]:
-            phase, aug = "Easy", "Light jitter, small crop"
-        elif ep <= MILESTONES[1]:
-            phase, aug = "Medium", "Moderate jitter + rotation"
-        elif ep <= MILESTONES[2]:
-            phase, aug = "Hard", "Strong jitter + cutout"
+        if ep <= TIER_T1:
+            tier, aug = "Tier 1", "flip, crop, translate"
+        elif ep <= TIER_T2:
+            tier, aug = "Tier 2", "+ jitter, rotation, shear"
         else:
-            phase, aug = "Full", "Max augmentation strength"
+            tier, aug = "Tier 3", "+ cutout, grayscale, contrast"
 
         bar = "█" * int(d * 20)
-        print(f"  {ep:>6}  {d:>10.3f}  {phase:>12}  {bar}")
+        print(f"  {ep:>6}  {d:>10.3f}  {tier:>8}  {bar}")
 
-    print(f"\n  MultiStepLR milestones: {MILESTONES}")
-    print("  Phase boundaries align with LR drops for maximum stability.\n")
+    print(f"\n  ETS tier boundaries: ep {TIER_T1} (t1=0.20), ep {TIER_T2} (t2=0.45)")
+    print(f"  Strength ramp: {STRENGTH_RAMP} epochs linear at each boundary.\n")
 
     print(
         "  "
@@ -426,14 +448,14 @@ def print_schedule_analysis():
     )
     print("  " + "─" * 60)
     schedules = {
-        "Loss-Guided (ours)": [loss_guided_difficulty(e) for e in epochs],
+        "ETS (ours)": [ets_difficulty(e) for e in epochs],
         "Linear": [linear_difficulty(e) for e in epochs],
         "Step": [step_difficulty(e) for e in epochs],
         "Static": [static_difficulty(e) for e in epochs],
     }
     ramp_styles = {
-        "Loss-Guided (ours)": "Sigmoid — slow start, fast middle, plateau",
-        "Linear": "Constant rate from ep 1 to ep 150",
+        "ETS (ours)": f"Step + {STRENGTH_RAMP}-ep linear ramp at tier boundaries",
+        "Linear": "Constant rate from ep 1 to ep 100",
         "Step": "Discrete jumps at milestones",
         "Static": "Flat — no curriculum",
     }
