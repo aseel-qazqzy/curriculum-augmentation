@@ -193,6 +193,9 @@ def fig_multi_seed(log_paths: list, fname: str = "egs_tier_flow_multiseed.png"):
         fontweight="bold",
     )
 
+    log_paths = _deduplicate_logs(log_paths)
+    log_paths = sorted(log_paths, key=lambda p: _extract_seed(p) or "")
+
     palette = ["#009E73", "#E69F00", "#CC79A7", "#0072B2", "#D55E00"]
     all_mix_eps = []
 
@@ -240,8 +243,35 @@ def fig_multi_seed(log_paths: list, fname: str = "egs_tier_flow_multiseed.png"):
 
 
 def _extract_seed(path: str):
-    m = re.search(r"_s(\d+)(?:_|\.)", Path(path).name)
-    return m.group(1) if m else None
+    name = Path(path).name
+    # try most-specific pattern first: cifar*_s42_ or tiny*_s42_
+    for pattern in [
+        r"(?:cifar|tiny)[^_]*_s(\d+)_",
+        r"_s(\d+)_p\d+",
+        r"_s(\d+)(?:_|\.)",
+    ]:
+        m = re.search(pattern, name)
+        if m:
+            return m.group(1)
+    return None
+
+
+def _deduplicate_logs(paths: list):
+    """Keep only one log per seed — prefer longer filename (more specific run)."""
+    by_seed = {}
+    no_seed = []
+    for p in paths:
+        seed = _extract_seed(p)
+        if seed is None:
+            no_seed.append(p)
+            continue
+        if seed not in by_seed or len(p) > len(by_seed[seed]):
+            by_seed[seed] = p
+    if no_seed:
+        print(f"  WARN: {len(no_seed)} log(s) skipped — seed not detected in filename:")
+        for p in no_seed:
+            print(f"    {Path(p).name}")
+    return list(by_seed.values())
 
 
 def _annotate_final(ax, epochs, t1, t2, t3):

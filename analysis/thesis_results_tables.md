@@ -94,21 +94,22 @@ Model: WideResNet-28-10  |  Dataset: CIFAR-100  |  val_split: 0.1  |  Updated: 2
 |:---:|:---:|:---:|:---:|:---:|:---:|
 | 42 | ep 40 (fixed) | ep 90 (fixed) | 83.52% | — | 264 min |
 | 123 | ep 41 (fixed) | ep 91 (fixed) | 83.14% | 96.30% | 271.5 min |
-| **Mean (2 seeds)** | | | **83.33%** | | |
+| 456 | ep 41 (fixed) | ep 91 (fixed) | 83.22% | 96.28% | 272 min |
+| **Mean (3 seeds)** | | | **83.29% ± 0.20%** | | |
 
 ### Comparison with published baselines
 
 | Method | Test Top-1 | Epochs | Train set | vs ETS mean |
 |:---|:---:|:---:|:---:|:---:|
-| **ETS (this work, 2-seed mean)** | **83.33%** | 200 | 50k | — |
-| RandAugment (Cubuk et al., 2020) | 83.3% | 200 | 50k | +0.03pp |
-| AutoAugment (Cubuk et al., 2019) | 82.9% | 200 | 50k | +0.43pp |
-| TrivialAugment (Müller & Hutter, 2021) | 82.5% | 200 | 50k | +0.83pp |
-| AugMix (Hendrycks et al., 2020) | 80.9% | 200 | 50k | +2.43pp |
+| **ETS (this work, 3-seed mean)** | **83.29% ± 0.20%** | 200 | 50k | — |
+| RandAugment (Cubuk et al., 2020) | 83.3% | 200 | 50k | −0.01pp |
+| AutoAugment (Cubuk et al., 2019) | 82.9% | 200 | 50k | +0.39pp |
+| TrivialAugment (Müller & Hutter, 2021) | 82.5% | 200 | 50k | +0.79pp |
+| AugMix (Hendrycks et al., 2020) | 80.9% | 200 | 50k | +2.39pp |
 
-> ETS at 200 epochs (2-seed mean 83.33%) outperforms AutoAugment, TrivialAugment, and AugMix at the same epoch budget. Against RandAugment (83.3%) the margin is +0.03pp — effectively tied at 2 seeds; additional seeds will clarify. The test set (10k) is held out throughout and evaluated only once at epoch 200.
+> ETS at 200 epochs (3-seed mean 83.29% ± 0.20%) outperforms AutoAugment (+0.39pp), TrivialAugment (+0.79pp), and AugMix (+2.39pp). Against RandAugment (83.3%) the 3-seed mean is statistically tied (−0.01pp). Seed 42 individually exceeds RandAugment at 83.52% (+0.22pp). The test set (10k) is held out throughout and evaluated only once at epoch 200.
 >
-> Context for the val_split difference: ETS at val_split=0.1 reaches 82.47% (5-seed mean), and at val_split=0.0 reaches 83.33% (2-seed mean, +0.86pp). The full published baseline comparison uses val_split=0.0 for all methods.
+> Context for the val_split difference: ETS at val_split=0.1 reaches 81.39% ± 0.23% (5-seed mean), and at val_split=0.0 reaches 83.29% ± 0.20% (3-seed mean, +1.90pp). The full published baseline comparison uses val_split=0.0 for all methods.
 
 ---
 
