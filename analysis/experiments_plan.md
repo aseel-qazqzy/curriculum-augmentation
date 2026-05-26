@@ -39,7 +39,9 @@ Sources: FIT presentation, FIT Q&A (105 questions), session discussions  |  Upda
 | ETS 150 epochs (14-op) | E | 3 | W | 14 | CIFAR-100 | partial |
 | **ETS 200 epochs (19-op) — val_split=0 — s42** | E | 1 | W | 19 | CIFAR-100 | done — 83.52% · 264 min |
 | **ETS 200 epochs (19-op) — val_split=0 — s123** | E | 1 | W | 19 | CIFAR-100 | done — 83.14% · 271.5 min · Top-5: 96.30% |
-| **ETS 200 epochs (19-op) — val_split=0 — s456** | E | 1 | W | 19 | CIFAR-100 | done — 83.22% · 272 min · Top-5: 96.28% · 3-seed mean: 83.29% ± 0.20% |
+| **ETS 200 epochs (19-op) — val_split=0 — s456** | E | 1 | W | 19 | CIFAR-100 | done — 83.22% · 272 min · Top-5: 96.28% |
+| **ETS 200 epochs (19-op) — val_split=0 — s3407** | E | 1 | W | 19 | CIFAR-100 | done — 83.37% · 272 min · Top-5: 96.19% |
+| **ETS 200 epochs (19-op) — val_split=0 — s1024** | E | 1 | W | 19 | CIFAR-100 | done — 83.09% · 272 min · Top-5: 96.00% · 5-seed mean: 83.27% ± 0.18% |
 | **RandAugment N=2, M=9** (required) | — | 1 | W | — | CIFAR-100 | pending |
 | **Random Aug (same pool, no ordering)** (required) | — | 1 | W | 19 | CIFAR-100 | pending |
 | **TrivialAugment** baseline | — | 1 | W | — | CIFAR-100 | pending — needs implementation check |
@@ -435,7 +437,7 @@ python analysis/cifar100c_robustness.py --c_root data/CIFAR-100-C
 | 10 | CutMix only + MixUp only | ~270 min | FIT Q33 — mixing decomposition | done |
 | 11 | Tiny-ImageNet ETS + LPS | ~1069 min | Cross-dataset generalisation | done |
 | 12 | ResNet-50 × 4 | ~540 min | FIT primary backbone | done |
-| 13 | **ETS 200 epochs** | 276 min | Match published 200ep baselines | done — 83.52% s42 (val_split=0.0) · beats RandAugment +0.22pp · beats AutoAugment +0.62pp |
+| 13 | **ETS 200 epochs** | 276 min | Match published 200ep baselines | done — 5-seed mean 83.27% ± 0.18% (s42=83.52%, s123=83.14%, s456=83.22%, s3407=83.37%, s1024=83.09%) · tied RandAugment −0.03pp · beats AutoAugment +0.37pp |
 | 14 | **LPS 200 epochs** | 262 min | Inter-method comparison at 200ep | done — 82.52% s42 (val_split=0.1) · T1→T2 ep30 · T2→T3 ep40 · Δ=0.05pp vs ETS |
 | 15 | **TrivialAugment** | ~135 min | Standard 2021 baseline — needs implementation | pending |
 | 16 | **AutoAugment** | ~135 min | Gold standard baseline — needs implementation | pending |

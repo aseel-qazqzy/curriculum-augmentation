@@ -105,6 +105,7 @@ def build_transforms(cfg: dict):
             op_ranking_file=cfg.get("op_ranking_file"),
             op_pool=cfg.get("op_pool", 19),
             reverse=cfg.get("reverse_curriculum", False),
+            tier_structure=cfg.get("tier_structure", "standard"),
         )
         return policy.get_train_transform(), policy.get_val_transform()
 
@@ -758,11 +759,6 @@ def main(cfg: dict):
     test_loss, test_top1, test_top5 = evaluate(model, test_loader, criterion, device)
     total_time = time.time() - start_time
 
-    best_ckpt["test_top1"] = test_top1
-    best_ckpt["test_top5"] = test_top5
-    best_ckpt["total_minutes"] = total_time / 60
-    torch.save(best_ckpt, ckpt_path)
-
     last_train_loss = history["train_loss"][-1] if history["train_loss"] else 0.0
     last_train_acc = history["train_acc"][-1] if history["train_acc"] else 0.0
     last_val_loss = history["val_loss"][-1] if history["val_loss"] else 0.0
@@ -803,6 +799,11 @@ def main(cfg: dict):
     print(sep)
     if lps_scheduler is not None and lps_scheduler.tier_change_log:
         print(f"  LPS Tier transitions: {lps_scheduler.tier_change_log}")
+
+    best_ckpt["test_top1"] = test_top1
+    best_ckpt["test_top5"] = test_top5
+    best_ckpt["total_minutes"] = total_time / 60
+    torch.save(best_ckpt, ckpt_path)
 
     if cfg.get("use_wandb"):
         import wandb
@@ -923,6 +924,19 @@ def parse_args():
         action="store_true",
         default=False,
         help="Reverse tier order: start with all hard ops (T1=19 ops) and reduce to easy (T3=4 ops)",
+    )
+    parser.add_argument(
+        "--tier_structure",
+        type=str,
+        default=None,
+        choices=["standard", "skip_t2", "t2_only", "two_tier"],
+        help=(
+            "Curriculum structure ablation: "
+            "standard=3-tier (default), "
+            "skip_t2=T1→T3 direct (no T2 phase, boundary at t2), "
+            "t2_only=T2 ops for all epochs, "
+            "two_tier=T1→T3 with single boundary at t1"
+        ),
     )
     parser.add_argument(
         "--mix_mode",
@@ -1122,6 +1136,7 @@ if __name__ == "__main__":
         "warmup_epochs",
         "op_ranking_file",
         "op_pool",
+        "tier_structure",
     ]:
         val = getattr(args, key, None)
         if val is not None:

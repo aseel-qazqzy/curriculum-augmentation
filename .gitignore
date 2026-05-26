@@ -52,6 +52,8 @@ data/cifar-100-python/
 data/cifar-*/train
 data/tiny-imagenet-200/
 data/tiny-imagenet-200.zip
+data/CIFAR-100-C/
+data/data/tiny-imagenet-200/
 augmentations/sota/
 
 # Results and checkpoints

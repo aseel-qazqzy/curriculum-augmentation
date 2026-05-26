@@ -228,6 +228,7 @@ class ThreeTierCurriculumTransform:
         op_ranking_file: str | None = None,
         op_pool: int = 19,
         reverse: bool = False,
+        tier_structure: str = "standard",
     ):
         mean = STATS[dataset]["mean"]
         std = STATS[dataset]["std"]
@@ -242,6 +243,7 @@ class ThreeTierCurriculumTransform:
         self._forced_tier = None  # set by loss/entropy schedulers; None = time-based
         self._tier_start_epoch: dict[int, int] = {}
         self._reverse = reverse
+        self._tier_structure = tier_structure
         if op_ranking_file:
             self._tier_ops, self._op_strengths = _load_tier_ops(op_ranking_file)
             self._n_ops = _TIER_N_OPS  # ranked pool always uses 19-op sample counts
@@ -285,7 +287,15 @@ class ThreeTierCurriculumTransform:
     def tier(self) -> int:
         if self._forced_tier is not None:  # loss/entropy path
             return self._forced_tier
-        if self.epoch <= self.t1:  # time-based path — unchanged
+        # time-based path
+        if self._tier_structure == "skip_t2":
+            return 1 if self.epoch <= self.t2 else 3
+        if self._tier_structure == "t2_only":
+            return 2
+        if self._tier_structure == "two_tier":
+            return 1 if self.epoch <= self.t1 else 3
+        # standard 3-tier
+        if self.epoch <= self.t1:
             return 1
         if self.epoch <= self.t2:
             return 2
@@ -310,31 +320,43 @@ class ThreeTierCurriculumTransform:
         Under ETS the boundary is the configured t1/t2 epoch. Under LPS/EGS the
         boundary is the actual detection epoch stored by set_tier(), so the ramp
         always starts from the real transition point regardless of scheduler.
+        skip_t2 / two_tier both jump T1→T3, so the ramp runs from T1 strength.
         """
         tier = self.tier()
         s_curr = self._tier_strength(tier)
         if tier == 1:
             return s_curr
+        if self._tier_structure == "t2_only":
+            return s_curr  # always T2, no ramp needed
         if self._forced_tier is not None and tier in self._tier_start_epoch:
             boundary = self._tier_start_epoch[tier]
+        elif self._tier_structure == "two_tier" and tier == 3:
+            boundary = self.t1  # T3 starts at t1 in two_tier
         else:
             boundary = self.t1 if tier == 2 else self.t2
         epochs_in = self.epoch - boundary
         if 0 < epochs_in <= _STRENGTH_RAMP_EPOCHS:
-            s_prev = self._tier_strength(tier - 1)
+            # skip_t2 / two_tier jump T1→T3: ramp from T1 strength, not T2
+            if self._tier_structure in ("skip_t2", "two_tier") and tier == 3:
+                s_prev = self._tier_strength(1)
+            else:
+                s_prev = self._tier_strength(tier - 1)
             return s_prev + (s_curr - s_prev) * (epochs_in / _STRENGTH_RAMP_EPOCHS)
         return s_curr
 
     def mix_scale(self) -> float:
         """Returns 0.0 before Tier 3, then ramps linearly 0→1 over _STRENGTH_RAMP_EPOCHS.
 
-        Uses the actual Tier 3 start epoch (LPS/EGS) or the configured t2 (ETS)
-        as the ramp origin, so mixing always activates on the first Tier 3 epoch.
+        Uses the actual Tier 3 start epoch (LPS/EGS) or the configured boundary
+        as the ramp origin. two_tier uses t1 as the T3 boundary; t2_only never
+        reaches T3 so always returns 0.0.
         """
         if self.tier() < 3:
             return 0.0
         if self._forced_tier is not None and 3 in self._tier_start_epoch:
             boundary = self._tier_start_epoch[3]
+        elif self._tier_structure == "two_tier":
+            boundary = self.t1
         else:
             boundary = self.t2
         epochs_in = self.epoch - boundary
@@ -378,6 +400,7 @@ class ThreeTierCurriculumAugmentation(AugmentationPolicy):
         op_ranking_file: str | None = None,
         op_pool: int = 19,
         reverse: bool = False,
+        tier_structure: str = "standard",
     ):
         super().__init__(dataset=dataset)
         self.t1 = t1
@@ -386,6 +409,7 @@ class ThreeTierCurriculumAugmentation(AugmentationPolicy):
         self.op_ranking_file = op_ranking_file
         self.op_pool = op_pool
         self.reverse = reverse
+        self.tier_structure = tier_structure
 
     def get_train_transform(self) -> ThreeTierCurriculumTransform:
         return ThreeTierCurriculumTransform(
@@ -396,6 +420,7 @@ class ThreeTierCurriculumAugmentation(AugmentationPolicy):
             op_ranking_file=self.op_ranking_file,
             op_pool=self.op_pool,
             reverse=self.reverse,
+            tier_structure=self.tier_structure,
         )
 
 
