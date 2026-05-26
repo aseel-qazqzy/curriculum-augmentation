@@ -131,8 +131,10 @@ def main(cfg: dict):
                     f"_{cfg['optimizer']}_{cfg['scheduler']}"
                 )
             else:
+                ts = cfg.get("tier_structure", "standard")
+                ts_tag = f"_{ts}" if ts != "standard" else ""
                 cfg["experiment_name"] = (
-                    f"{cfg['model']}_tiered_{schedule}_{mix_tag}"
+                    f"{cfg['model']}_tiered_{schedule}{ts_tag}_{mix_tag}"
                     f"_{cfg['optimizer']}_{cfg['scheduler']}"
                 )
         else:
@@ -231,10 +233,8 @@ def main(cfg: dict):
                 f"| H_thresh T2={t2_thr:.2f}×logC  T3={t3_thr:.2f}×logC"
             )
         else:
-            t1_str = "loss-guided" if is_lps else f"ep   1-{t1:2d}"
-            t2_str = "loss-guided" if is_lps else f"ep {t1 + 1:2d}-{t2:2d}"
-            t3_str = "loss-guided" if is_lps else f"ep {t2 + 1:2d}-end"
             is_rev = cfg.get("reverse_curriculum", False)
+            ts = cfg.get("tier_structure", "standard")
             _ops, _nops = (
                 (
                     {1: _TIER_OPS[3], 2: _TIER_OPS[2], 3: _TIER_OPS[1]},
@@ -246,18 +246,45 @@ def main(cfg: dict):
             _t2_new = [op for op in _ops[2] if op not in _ops[1]]
             _t3_new = [op for op in _ops[3] if op not in _ops[2]]
             rev_tag = "  [REVERSE]" if is_rev else ""
-            print(
-                f"  Tier 1 ({t1_str}){rev_tag}: {', '.join(_ops[1])}"
-                f"  |  sample {_nops[1]}/{len(_ops[1])}  |  strength {s1:.2f}"
-            )
-            print(
-                f"  Tier 2 ({t2_str}): +{', '.join(_t2_new)}"
-                f"  |  sample {_nops[2]}/{len(_ops[2])}  |  strength {s2:.2f} (ramp {_STRENGTH_RAMP_EPOCHS} ep)"
-            )
-            print(
-                f"  Tier 3 ({t3_str}): +{', '.join(_t3_new)}"
-                f"  |  sample {_nops[3]}/{len(_ops[3])}  |  strength {s3:.2f} (ramp {_STRENGTH_RAMP_EPOCHS} ep)"
-            )
+            if ts == "skip_t2":
+                print(
+                    f"  Tier 1 (ep   1-{t2:2d}){rev_tag}: {', '.join(_ops[1])}"
+                    f"  |  sample {_nops[1]}/{len(_ops[1])}  |  strength {s1:.2f}  [T2 skipped]"
+                )
+                print(
+                    f"  Tier 3 (ep {t2 + 1:2d}-end): +{', '.join(_t3_new)}"
+                    f"  |  sample {_nops[3]}/{len(_ops[3])}  |  strength {s3:.2f} (ramp {_STRENGTH_RAMP_EPOCHS} ep)"
+                )
+            elif ts == "t2_only":
+                print(
+                    f"  Tier 2 (all epochs): {', '.join(_ops[2])}"
+                    f"  |  sample {_nops[2]}/{len(_ops[2])}  |  strength {s2:.2f}  [T2 only, no progression]"
+                )
+            elif ts == "two_tier":
+                print(
+                    f"  Tier 1 (ep   1-{t1:2d}){rev_tag}: {', '.join(_ops[1])}"
+                    f"  |  sample {_nops[1]}/{len(_ops[1])}  |  strength {s1:.2f}"
+                )
+                print(
+                    f"  Tier 3 (ep {t1 + 1:2d}-end): +{', '.join(_t3_new)}"
+                    f"  |  sample {_nops[3]}/{len(_ops[3])}  |  strength {s3:.2f} (ramp {_STRENGTH_RAMP_EPOCHS} ep)  [2-tier]"
+                )
+            else:
+                t1_str = "loss-guided" if is_lps else f"ep   1-{t1:2d}"
+                t2_str = "loss-guided" if is_lps else f"ep {t1 + 1:2d}-{t2:2d}"
+                t3_str = "loss-guided" if is_lps else f"ep {t2 + 1:2d}-end"
+                print(
+                    f"  Tier 1 ({t1_str}){rev_tag}: {', '.join(_ops[1])}"
+                    f"  |  sample {_nops[1]}/{len(_ops[1])}  |  strength {s1:.2f}"
+                )
+                print(
+                    f"  Tier 2 ({t2_str}): +{', '.join(_t2_new)}"
+                    f"  |  sample {_nops[2]}/{len(_ops[2])}  |  strength {s2:.2f} (ramp {_STRENGTH_RAMP_EPOCHS} ep)"
+                )
+                print(
+                    f"  Tier 3 ({t3_str}): +{', '.join(_t3_new)}"
+                    f"  |  sample {_nops[3]}/{len(_ops[3])}  |  strength {s3:.2f} (ramp {_STRENGTH_RAMP_EPOCHS} ep)"
+                )
             mix_mode = cfg.get("mix_mode", "both")
             if mix_mode != "none":
                 ramp_str = (
