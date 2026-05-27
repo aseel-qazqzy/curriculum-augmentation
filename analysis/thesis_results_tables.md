@@ -369,6 +369,7 @@ Model: WideResNet-28-10  |  Dataset: CIFAR-100  |  val_split: 0.1  |  Updated: 2
 | ETS + CutMix only | 4 easy | 19 all | 40% | 100% | T3 CutMix | **81.74%** | **+0.39pp** |
 | ETS + MixUp only | 4 easy | 19 all | 40% | 100% | T3 MixUp | 80.45% | −0.90pp |
 | ETS No Mixing | 4 easy | 19 all | 40% | 100% | none | 79.29% | −2.06pp |
+| **Skip T2** (T1→T3 direct, ep 1–45 T1, ep 46–end T3) | 4 easy | 19 all | 40% | 100% | T3 only (both) | **81.35%** | **0.00pp** |
 | Static Mixing | 19 all | 19 all | 100% | 100% | from ep 1 | 77.43% | −3.92pp |
 | Reverse ETS (Hard→Easy) | 19 all | 4 easy | 100% | 40% | T3 only | 78.17% | −3.18pp |
 | Static No Mixing | 19 all | 19 all | 100% | 100% | none | 78.23% | −3.12pp |

@@ -168,7 +168,7 @@ python -m experiments.train_baseline --dataset cifar100 --model wideresnet \
 |:---|:---:|:---:|:---:|:---:|:---:|:---:|
 | **Reverse: Hard → Medium → Easy** FIT Q105 | E | 1 | W | 19 | CIFAR-100 | done — 78.17% s42 |
 | **Hard from epoch 1 (t1=0, t2=0)** (required) | E | 1 | W | 19 | CIFAR-100 | pending |
-| T1 + T3 only (skip T2) | E | 1 | W | 19 | CIFAR-100 | pending |
+| T1 + T3 only (skip T2) | E | 1 | W | 19 | CIFAR-100 | done — 81.35% s42 · 133 min |
 | T2 only (photometric ops, all 100 epochs) | E | 1 | W | 19 | CIFAR-100 | pending |
 | 2-tier only: Easy → Hard | E | 1 | W | 19 | CIFAR-100 | pending |
 
@@ -477,9 +477,9 @@ python analysis/cifar100c_robustness.py --c_root data/CIFAR-100-C
 | Feature | Implementation |
 |:---|:---|
 | Reverse curriculum (Hard→Med→Easy) | `_TIER_OPS_REVERSE` dict in `policies.py` |
-| T1 + T3 skip T2 | `--tier_structure` flag or custom pool |
-| 2-tier (Easy → Hard) | Same as above |
-| T2 only | Same as above |
+| T1 + T3 skip T2 | done — `--tier_structure skip_t2` |
+| 2-tier (Easy → Hard) | done — `--tier_structure two_tier` |
+| T2 only | done — `--tier_structure t2_only` |
 | No strength ramp | `--strength_ramp_epochs 0` flag |
 | Hard from epoch 1 | done — Already works: `--tier_t1 0.0 --tier_t2 0.0` |
 
