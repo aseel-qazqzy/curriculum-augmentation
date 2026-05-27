@@ -20,4 +20,4 @@ loss, top1, top5 = evaluate(model, test_loader,criterion, device)
 print(f"\n  Test Top-1 : {top1:.2f}%")
 print(f"  Test Top-5 : {top5:.2f}%")
 print(f"  Test Loss  : {loss:.4f}")
-  
+
