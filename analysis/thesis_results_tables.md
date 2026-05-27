@@ -209,6 +209,8 @@ Model: WideResNet-28-10  |  Dataset: CIFAR-100  |  val_split: 0.1  |  Updated: 2
 | **ets_cutmix** | 19 | cosine | 42 | 100 | 81.74% | 0.04% | 137 min |
 | **ets_mixup** | 19 | cosine | 42 | 100 | 80.45% | 0.61% | 137 min |
 | **static_nomix** | 19 | cosine | 42 | 100 | 78.23% | 1.15% | 139 min |
+| **ets_two_tier** | 19 | cosine | 42 | 100 | 81.49% | 0.57% | 138 min |
+| **ets_t2_only** | 19 | cosine | 42 | 100 | 80.44% | 0.44% | 137 min |
 | tiered_lps | 14 | cosine | 42 | 100 | 81.48% | 0.56% | 226 min |
 | tiered_lps | 14 | cosine | 123 | 100 | 80.65% | 1.23% | 226 min |
 | tiered_lps | 14 | cosine | 456 | 100 | 81.76% | 0.64% | 226 min |
@@ -370,6 +372,8 @@ Model: WideResNet-28-10  |  Dataset: CIFAR-100  |  val_split: 0.1  |  Updated: 2
 | ETS + MixUp only | 4 easy | 19 all | 40% | 100% | T3 MixUp | 80.45% | −0.90pp |
 | ETS No Mixing | 4 easy | 19 all | 40% | 100% | none | 79.29% | −2.06pp |
 | **Skip T2** (T1→T3 direct, ep 1–45 T1, ep 46–end T3) | 4 easy | 19 all | 40% | 100% | T3 only (both) | **81.35%** | **0.00pp** |
+| **2-Tier** (T1→T3 at ep 20, no T2) | 4 easy | 19 all | 40% | 100% | T3 only (both) | **81.49%** | **+0.14pp** |
+| **T2 Only** (T2 ops all 100 epochs, no mixing) | — | 11 mid | — | 49% | none (T3 never reached) | 80.44% | −0.91pp |
 | Static Mixing | 19 all | 19 all | 100% | 100% | from ep 1 | 77.43% | −3.92pp |
 | Reverse ETS (Hard→Easy) | 19 all | 4 easy | 100% | 40% | T3 only | 78.17% | −3.18pp |
 | Static No Mixing | 19 all | 19 all | 100% | 100% | none | 78.23% | −3.12pp |
@@ -404,6 +408,64 @@ Model: WideResNet-28-10  |  Dataset: CIFAR-100  |  val_split: 0.1  |  Updated: 2
 > | **Curriculum effect** | **+1.06pp** | **+4.31pp** | |
 >
 > **Critical finding — the curriculum amplifies the benefit of mixing:** Applying CutMix from epoch 1 (static) slightly *hurts* performance (−0.80pp). The same CutMix applied only in Tier 3 after curriculum warm-up *helps* significantly (+2.45pp). The interaction between curriculum and mixing is super-additive: curriculum+CutMix gains +4.31pp over static alone, far exceeding the sum of their individual effects (+1.06pp + 2.45pp). This demonstrates that delaying mixing until the model has acquired stable representations (via the curriculum) is what makes mixing beneficial — not mixing itself in isolation.
+
+---
+
+## Table 15 — Expected Calibration Error (WideResNet-28-10 · CIFAR-100 · 19-op · 100ep · Seed 42)
+
+> ECE measures how well predicted confidence matches actual accuracy. Lower = better calibrated.
+> Computed over the test set (10,000 samples) using 10 equal-width confidence bins.
+
+| Method | ECE | Test Top-1 | Calibration |
+|:---|:---:|:---:|:---|
+| **EGS** | **0.0217** | 79.83% | Best — per-sample entropy scheduling trains the model to be uncertain about hard samples |
+| Static | 0.0301 | 77.79% | Good — flat augmentation gives stable, consistent confidence |
+| ETS | 0.0378 | 81.25% | Slight overconfidence — accuracy gain comes at a small calibration cost |
+| LPS | 0.0397 | 81.36% | Slight overconfidence — same trade-off as ETS |
+
+> **Finding — accuracy vs calibration trade-off:** ETS and LPS improve accuracy by ~+3.5pp over Static but worsen ECE by +0.008–0.010. EGS achieves the best calibration (0.0217) at the cost of lower accuracy (−2.0pp vs ETS). All four methods are well-calibrated (ECE < 0.05). The per-sample entropy mechanism in EGS inherently encourages calibration by training the model to distinguish easy from hard samples — this uncertainty awareness transfers to better-calibrated confidence estimates at inference.
+
+---
+
+## Table 16 — Convergence Speed (WideResNet-28-10 · CIFAR-100 · 19-op · 100ep · Seed 42)
+
+> First epoch where val_acc ≥ threshold. `—` = never reached in 100 epochs.
+
+| Method | 70%@ep | 75%@ep | 80%@ep |
+|:---|:---:|:---:|:---:|
+| Static | 77 | 88 | — |
+| ETS (both) | 62 | 76 | 89 |
+| ETS + CutMix | 61 | 74 | **88** |
+| ETS + MixUp | 62 | 75 | 91 |
+| ETS no-mix | 66 | 75 | — |
+| ETS T2-only | 63 | 78 | 91 |
+| **ETS 2-tier** | **61** | **72** | 89 |
+| **LPS** | **61** | 74 | **83** |
+| EGS | 71 | 80 | 95 |
+
+> **Finding — curriculum accelerates convergence by 10–16 epochs:** All curriculum methods with mixing reach 70% at epoch 61–66 vs Static at epoch 77. LPS reaches 80% earliest (ep83) — adaptive scheduling advances tiers when the model is ready rather than at fixed thresholds, enabling faster progression. ETS 2-tier is fastest to 75% (ep72) because jumping directly to T3 at epoch 20 maximises time in full augmentation. Static and ETS-nomix never reach 80% in 100 epochs — mixing is the critical ingredient that enables crossing this threshold.
+
+---
+
+## Table 17 — Overfitting Gap (WideResNet-28-10 · CIFAR-100 · 19-op · 100ep · Seed 42 · last epoch)
+
+> Gap = train_acc − val_acc at epoch 100. Negative gap = mixing suppresses train_acc below val_acc (expected behaviour, not underfitting).
+
+| Method | Train Acc | Val Acc | Gap | Best Val |
+|:---|:---:|:---:|:---:|:---:|
+| Static | 61.66% | 77.88% | **−16.22pp** | 78.08% |
+| ETS (both) | 86.46% | 81.32% | +5.14pp | 81.34% |
+| ETS + CutMix | 84.08% | 81.58% | +2.50pp | 81.78% |
+| ETS + MixUp | 85.02% | 81.06% | +3.96pp | 81.06% |
+| **ETS no-mix** | **99.98%** | 79.80% | **+20.18pp** | 79.82% |
+| **ETS T2-only** | **99.32%** | 80.70% | **+18.62pp** | 80.88% |
+| **ETS 2-tier** | 83.80% | 82.06% | **+1.74pp** | 82.06% |
+| LPS | 83.75% | 81.48% | +2.27pp | 81.86% |
+| EGS | 69.77% | 80.28% | **−10.51pp** | 80.30% |
+
+> **Finding — negative gap is expected for heavy mixing from epoch 1:** Static (−16.22pp) and EGS (−10.51pp) show val_acc > train_acc because CutMix/MixUp create soft/mixed labels throughout training — the model never sees clean labels during training, suppressing train_acc artificially. ETS/LPS delay mixing to T3, so early epochs build clean representations, resulting in normal small positive gaps.
+>
+> **Finding — mixing eliminates overfitting:** ETS-nomix (+20.18pp) and T2-only (+18.62pp) show severe overfitting with near-perfect train accuracy (99.98%, 99.32%). Adding mixing (ETS both: +5.14pp) collapses the gap by ~15pp. ETS 2-tier (+1.74pp) has the best regularisation among mixing variants — more epochs in T3 with mixing provides stronger regularisation.
 
 ---
 

@@ -169,8 +169,8 @@ python -m experiments.train_baseline --dataset cifar100 --model wideresnet \
 | **Reverse: Hard → Medium → Easy** FIT Q105 | E | 1 | W | 19 | CIFAR-100 | done — 78.17% s42 |
 | **Hard from epoch 1 (t1=0, t2=0)** (required) | E | 1 | W | 19 | CIFAR-100 | pending |
 | T1 + T3 only (skip T2) | E | 1 | W | 19 | CIFAR-100 | done — 81.35% s42 · 133 min |
-| T2 only (photometric ops, all 100 epochs) | E | 1 | W | 19 | CIFAR-100 | pending |
-| 2-tier only: Easy → Hard | E | 1 | W | 19 | CIFAR-100 | pending |
+| T2 only (photometric ops, all 100 epochs) | E | 1 | W | 19 | CIFAR-100 | done — 80.44% s42 · 137 min |
+| 2-tier only: Easy → Hard | E | 1 | W | 19 | CIFAR-100 | done — 81.49% s42 · 138 min |
 
 **Answers:** Does the progressive 3-tier structure itself drive the gains, or just the final set of ops? Is the middle tier necessary? FIT Q105: *"If reverse performs worse, it directly confirms that order is what matters."*
 
