@@ -15,7 +15,7 @@ N_BINS = 10
 
 methods = {
     "Static": "wideresnet_static_mixing_sgd_cosine_ep100_cifar100_s42_p19_best.pth",
-    "ETS": "wideresnet_tiered_ets_mix_both_sgd_cosine_ep100_cifar100_s42_p19_best.pth",
+    "ETS": "wideresnet_tiered_ets_mix_both_sgd_cosine_ep100_cifar100_s123_p19_best.pth",
     "LPS": "wideresnet_tiered_lps_mix_both_sgd_cosine_ep100_cifar100_s42_p19_best.pth",
     "EGS": "egs_v2_100ep_s42_ep100_cifar100_s42_p19_best.pth",
 }
