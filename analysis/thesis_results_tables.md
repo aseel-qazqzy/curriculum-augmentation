@@ -708,3 +708,69 @@ Model: WideResNet-28-10  |  Dataset: CIFAR-100  |  val_split: 0.1  |  Updated: 2
 > Squirrel, mouse, bear, and forest appear in the top-10 gains for all three methods. These are fine-grained classes with high inter-class visual similarity where early-tier geometric-only training builds more discriminative representations before mixing is introduced. EGS v2 achieves the single largest per-class gain across all experiments: otter +26pp (44% → 70%).
 
 ---
+
+## Error Rate Summary (100 − Top-1 Accuracy)
+
+> Format: mean ± std (sample std, N seeds). Error = 100 − accuracy; std is identical to accuracy std.
+> Updated: 2026-05-29
+
+---
+
+## Table E1 — 14-op Pool · WideResNet-28-10 · CIFAR-100 · 100 epochs · 3 seeds
+
+| Method | Top-1 Acc | Error Rate |
+|:---|:---:|:---:|
+| No Augmentation | 72.86% | 27.1 *(1 seed)* |
+| Static Mixing | 81.61% ± 0.20% | **18.4 ± 0.2** |
+| Tiered ETS | 81.62% ± 0.28% | **18.4 ± 0.3** |
+| Tiered LPS | 81.30% ± 0.47% | **18.7 ± 0.5** |
+| Tiered EGS | 79.71% ± 0.32% | **20.3 ± 0.3** |
+
+---
+
+## Table E2 — 19-op Pool · WideResNet-28-10 · CIFAR-100 · 100 epochs · 5 seeds
+
+| Method | Top-1 Acc | Error Rate |
+|:---|:---:|:---:|
+| No Augmentation | 72.86% | 27.1 *(1 seed)* |
+| Static Mixing | 77.60% ± 0.50% | **22.4 ± 0.5** |
+| Tiered EGS v2 | 79.75% ± 0.44% | **20.3 ± 0.4** |
+| Tiered ETS | 81.39% ± 0.23% | **18.6 ± 0.2** |
+| Tiered LPS | 81.44% ± 0.20% | **18.6 ± 0.2** |
+
+---
+
+## Table E3 — Published Comparison · WideResNet-28-10 · CIFAR-100 · 200 epochs · val_split=0.0
+
+| Method | Top-1 Acc | Error Rate |
+|:---|:---:|:---:|
+| AugMix | 80.9% | 19.1 |
+| TrivialAugment | 82.5% | 17.5 |
+| AutoAugment | 82.9% | 17.1 |
+| **ETS (this work, 5 seeds)** | **83.27% ± 0.18%** | **16.7 ± 0.2** |
+| RandAugment | 83.3% | 16.7 |
+
+---
+
+## Table E4 — ResNet-50 · CIFAR-100 · 19-op · 100 epochs · Seed 42
+
+| Method | Top-1 Acc | Error Rate |
+|:---|:---:|:---:|
+| No Augmentation | 65.30% | 34.7 *(1 seed)* |
+| Static Mixing | 76.62% | 23.4 *(1 seed)* |
+| Tiered EGS v2 | 79.10% | 20.9 *(1 seed)* |
+| Tiered ETS | 80.41% | 19.6 *(1 seed)* |
+| Tiered LPS | 80.50% | 19.5 *(1 seed)* |
+
+---
+
+## Table E5 — Tiny-ImageNet · WideResNet-28-10 · 19-op · 100 epochs · Seed 42
+
+| Method | Top-1 Acc | Error Rate |
+|:---|:---:|:---:|
+| No Augmentation | 63.46% | 36.5 *(1 seed)* |
+| Static Mixing | 66.88% | 33.1 *(1 seed)* |
+| Tiered ETS | 69.16% | 30.8 *(1 seed)* |
+| Tiered LPS | 69.47% | 30.5 *(1 seed)* |
+
+---

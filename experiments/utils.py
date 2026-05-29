@@ -58,7 +58,11 @@ def setup_logging(cfg: dict) -> _Tee:
     mirroring all stdout output into it.
     """
     log_dir = (
-        Path(cfg.get("checkpoint_dir", "./checkpoints")).parent / "results" / "logs"
+        Path(cfg["log_dir"])
+        if cfg.get("log_dir")
+        else (
+            Path(cfg.get("checkpoint_dir", "./checkpoints")).parent / "results" / "logs"
+        )
     )
     log_dir.mkdir(parents=True, exist_ok=True)
 
