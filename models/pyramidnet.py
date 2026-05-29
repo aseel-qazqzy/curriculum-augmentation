@@ -1,12 +1,18 @@
 """
 models/pyramidnet.py
 
-PyramidNet for CIFAR-10 / CIFAR-100.
+PyramidNet for CIFAR-10 / CIFAR-100, with optional ShakeDrop regularization.
 
 Architecture used in Cubuk et al. (2020) RandAugment paper (Table 2, CIFAR-10):
-    PyramidNet+ShakeDrop (α=270, depth=272)
-    Baseline error:      1.5%
+    PyramidNet+ShakeDrop (α=200, depth=272)
+    Baseline error:      2.7%  (no augmentation beyond flip+crop)
+    + AutoAugment error: 1.5%  (Cubuk et al., 2019)
     + RandAugment error: 1.0%  (N=2, M=28)
+
+Architecture used in Cubuk et al. (2019) AutoAugment paper (Table 1, CIFAR-100):
+    PyramidNet+ShakeDrop (α=200, depth=272)
+    Baseline error:      14.0%
+    + AutoAugment error: 10.7 ± 0.2%
 
 Reference:
     Han, D., Kim, J., & Kim, J. (2017).
@@ -36,8 +42,9 @@ Architecture:
     n = (depth - 2) / 9  for bottleneck, or (depth - 2) / 6 for basic
 
 Usage:
-    model = get_pyramidnet(depth=110, alpha=48,  num_classes=10)   # lightweight
-    model = get_pyramidnet(depth=272, alpha=200, num_classes=10)   # paper model
+    model = get_pyramidnet(depth=110, alpha=48,  num_classes=10)              # lightweight
+    model = get_pyramidnet(depth=272, alpha=200, num_classes=10)              # plain paper model
+    model = get_pyramidnet272_sd(num_classes=10)                              # + ShakeDrop (paper SOTA)
 """
 
 import math
@@ -45,6 +52,36 @@ import math
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+
+
+# SHAKEDROP
+class ShakeDropFunction(torch.autograd.Function):
+    """
+    ShakeDrop (Yamada et al., 2019): stochastic per-block scaling of the residual.
+
+    Forward:  residual ← (b + α − b·α) · F(x)
+              b ~ Bernoulli(1 − p_drop),  α ~ Uniform[−1, 1]
+    Backward: gradient ← (b + β − b·β) · grad   (β ~ Uniform[0, 1], independent of α)
+    Test:     residual ← (1 − p_drop) · F(x)     (expected value of the forward scaling)
+
+    Death probability p_drop increases linearly from ~0 at the first block to 0.5 at the
+    last block (survival probability decreases from 1 → 0.5 across the network depth).
+    """
+
+    @staticmethod
+    def forward(ctx, x, training: bool, p_drop: float):
+        if not training:
+            return (1.0 - p_drop) * x
+        b = torch.bernoulli(x.new_full((1,), 1.0 - p_drop))
+        alpha = x.new_empty(x.size(0), 1, 1, 1).uniform_(-1.0, 1.0)
+        ctx.save_for_backward(b)
+        return (b + alpha - b * alpha) * x
+
+    @staticmethod
+    def backward(ctx, grad_output):
+        (b,) = ctx.saved_tensors
+        beta = grad_output.new_empty(grad_output.size(0), 1, 1, 1).uniform_(0.0, 1.0)
+        return (b + beta - b * beta) * grad_output, None, None
 
 
 # PYRAMID BASIC BLOCK
@@ -62,8 +99,11 @@ class PyramidBlock(nn.Module):
               and apply avg-pool if stride > 1 (no learned 1×1 projection).
     """
 
-    def __init__(self, in_channels: int, out_channels: int, stride: int = 1):
+    def __init__(
+        self, in_channels: int, out_channels: int, stride: int = 1, p_drop: float = 0.0
+    ):
         super().__init__()
+        self.p_drop = p_drop
         self.bn1 = nn.BatchNorm2d(in_channels)
         self.conv1 = nn.Conv2d(
             in_channels,
@@ -95,6 +135,9 @@ class PyramidBlock(nn.Module):
         out = self.conv1(self.bn1(x))
         out = self.conv2(F.relu(self.bn2(out), inplace=True))
         out = self.bn3(out)
+
+        if self.p_drop > 0.0:
+            out = ShakeDropFunction.apply(out, self.training, self.p_drop)
 
         # Shortcut: spatial downsampling + zero-channel-padding
         shortcut = x
@@ -132,6 +175,7 @@ class PyramidNet(nn.Module):
         alpha: int = 48,
         num_classes: int = 10,
         dropout: float = 0.0,
+        shakedrop: bool = False,
     ):
         super().__init__()
 
@@ -147,16 +191,30 @@ class PyramidNet(nn.Module):
             16 + round(alpha * (i + 1) / total_blocks) for i in range(total_blocks)
         ]
 
+        # ShakeDrop death probability increases linearly: ~0 at block 0 → 0.5 at last block
+        if shakedrop:
+            p_drops = [0.5 * (i + 1) / total_blocks for i in range(total_blocks)]
+        else:
+            p_drops = [0.0] * total_blocks
+
         self.conv1 = nn.Conv2d(3, 16, kernel_size=3, stride=1, padding=1, bias=False)
         self.bn1 = nn.BatchNorm2d(16)
 
         # Build 3 groups of n blocks each
-        self.layer1 = self._make_layer(16, self._widths[:n], stride=1)
+        self.layer1 = self._make_layer(
+            16, self._widths[:n], stride=1, p_drops=p_drops[:n]
+        )
         self.layer2 = self._make_layer(
-            self._widths[n - 1], self._widths[n : 2 * n], stride=2
+            self._widths[n - 1],
+            self._widths[n : 2 * n],
+            stride=2,
+            p_drops=p_drops[n : 2 * n],
         )
         self.layer3 = self._make_layer(
-            self._widths[2 * n - 1], self._widths[2 * n :], stride=2
+            self._widths[2 * n - 1],
+            self._widths[2 * n :],
+            stride=2,
+            p_drops=p_drops[2 * n :],
         )
 
         final_channels = self._widths[-1]
@@ -166,16 +224,18 @@ class PyramidNet(nn.Module):
 
         self._init_weights()
 
-    def _make_layer(self, in_ch: int, widths: list, stride: int) -> nn.Sequential:
+    def _make_layer(
+        self, in_ch: int, widths: list, stride: int, p_drops: list
+    ) -> nn.Sequential:
         """
         Build a group of blocks.
         First block may downsample (stride > 1) and always changes channels.
         Subsequent blocks only change channels (stride=1).
         """
         blocks = []
-        for i, out_ch in enumerate(widths):
+        for i, (out_ch, p_drop) in enumerate(zip(widths, p_drops)):
             s = stride if i == 0 else 1
-            blocks.append(PyramidBlock(in_ch, out_ch, stride=s))
+            blocks.append(PyramidBlock(in_ch, out_ch, stride=s, p_drop=p_drop))
             in_ch = out_ch
         return nn.Sequential(*blocks)
 
@@ -229,24 +289,45 @@ def get_pyramidnet110(num_classes: int = 10) -> PyramidNet:
 
 
 def get_pyramidnet272(num_classes: int = 10, dropout: float = 0.3) -> PyramidNet:
-    """PyramidNet-272 (α=200) — exact model from RandAugment paper Table 2."""
+    """PyramidNet-272 (α=200) — plain model without ShakeDrop."""
     return PyramidNet(depth=272, alpha=200, num_classes=num_classes, dropout=dropout)
+
+
+def get_pyramidnet272_sd(num_classes: int = 10) -> PyramidNet:
+    """PyramidNet-272 (α=200) + ShakeDrop — exact config from AutoAugment / RandAugment papers.
+
+    Published results (CIFAR-10):  AutoAugment 1.5% · RandAugment 1.0%
+    Published results (CIFAR-100): AutoAugment 10.7 ± 0.2%
+    """
+    return PyramidNet(
+        depth=272, alpha=200, num_classes=num_classes, dropout=0.3, shakedrop=True
+    )
 
 
 # QUICK TEST
 if __name__ == "__main__":
-    print("PyramidNet — Han et al. (CVPR 2017)")
-    print("Used in RandAugment (Cubuk et al. 2020) for CIFAR-10 SOTA\n")
+    print("PyramidNet — Han et al. (CVPR 2017)\n")
 
     configs = [
-        ("PyramidNet-110 (α=48,  lightweight)", dict(depth=110, alpha=48)),
-        ("PyramidNet-272 (α=200, paper model)", dict(depth=272, alpha=200)),
+        (
+            "PyramidNet-110  (α=48,  no ShakeDrop)",
+            dict(depth=110, alpha=48, shakedrop=False),
+        ),
+        (
+            "PyramidNet-272  (α=200, no ShakeDrop)",
+            dict(depth=272, alpha=200, shakedrop=False),
+        ),
+        (
+            "PyramidNet-272  (α=200, + ShakeDrop) ",
+            dict(depth=272, alpha=200, shakedrop=True),
+        ),
     ]
 
     dummy = torch.zeros(4, 3, 32, 32)
 
     for name, kwargs in configs:
-        model = get_pyramidnet(**kwargs, num_classes=10)
+        model = PyramidNet(**kwargs, num_classes=10, dropout=0.3)
+        model.eval()
         out = model(dummy)
         params = sum(p.numel() for p in model.parameters())
         print(f"  {name}")
@@ -256,4 +337,7 @@ if __name__ == "__main__":
             f"    Channel widths (first 5 / last 5): "
             f"{model._widths[:5]} ... {model._widths[-5:]}"
         )
+        if kwargs["shakedrop"]:
+            sample_block = list(model.layer3.children())[-1]
+            print(f"    Last block p_drop : {sample_block.p_drop:.4f}")
         print()

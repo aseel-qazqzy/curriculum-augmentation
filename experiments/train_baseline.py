@@ -871,6 +871,7 @@ def parse_args():
             "wrn16_8",
             "pyramidnet",
             "pyramidnet272",
+            "pyramidnet272_sd",
             "baseline_cnn",
         ],
     )
@@ -901,6 +902,7 @@ def parse_args():
     )
     parser.add_argument("--experiment_name", type=str, default=None)
     parser.add_argument("--checkpoint_dir", type=str, default=None)
+    parser.add_argument("--log_dir", type=str, default=None)
     parser.add_argument("--use_wandb", action="store_true")
     parser.add_argument(
         "--debug",
@@ -1132,6 +1134,7 @@ if __name__ == "__main__":
         "scheduler",
         "experiment_name",
         "checkpoint_dir",
+        "log_dir",
         "resume",
         "val_split",
         "early_stopping_patience",

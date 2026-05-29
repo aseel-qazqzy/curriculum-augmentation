@@ -28,6 +28,7 @@ MODEL_DISPLAY_NAMES: dict[str, str] = {
     "wrn16_8": "WRN-16-8",
     "pyramidnet": "PyramidNet-110",
     "pyramidnet272": "PyramidNet-272",
+    "pyramidnet272_sd": "PyramidNet-272+SD",
 }
 import models.baseline_resnet18 as resnet18_mod
 import models.baseline_resnet50 as resnet50_mod
@@ -72,9 +73,12 @@ def get_model(name: str, num_classes: int = 10) -> nn.Module:
     elif name in {"pyramidnet272", "pyramidnet-272"}:
         return pyramid_mod.get_pyramidnet272(num_classes=num_classes)
 
+    elif name in {"pyramidnet272_sd", "pyramidnet-272-sd"}:
+        return pyramid_mod.get_pyramidnet272_sd(num_classes=num_classes)
+
     else:
         raise ValueError(
             f"Unknown model: '{name}'. "
             f"Choose from: baseline_cnn, resnet18, resnet50, "
-            f"wideresnet, wrn16_8, pyramidnet, pyramidnet272"
+            f"wideresnet, wrn16_8, pyramidnet, pyramidnet272, pyramidnet272_sd"
         )
