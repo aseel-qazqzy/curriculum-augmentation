@@ -3,7 +3,7 @@ from pathlib import Path
 
 sys.path.insert(0, ".")
 
-CKPT = Path("checkpoints")
+CKPT = Path("results/cluster/checkpoints")
 thresholds = [0.70, 0.75, 0.80]
 runs = {
     "Static": "wideresnet_static_mixing_sgd_cosine_ep100_cifar100_s42_p19",

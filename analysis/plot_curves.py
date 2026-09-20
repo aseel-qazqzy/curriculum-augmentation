@@ -29,7 +29,7 @@ warnings.filterwarnings("ignore")
 _PROJECT_ROOT = Path(__file__).resolve().parent.parent
 sys.path.append(str(_PROJECT_ROOT))
 
-CHECKPOINT_DIR = str(_PROJECT_ROOT / "checkpoints")
+CHECKPOINT_DIR = str(_PROJECT_ROOT / "results" / "cluster" / "checkpoints")
 FIGURES_DIR = str(_PROJECT_ROOT / "results" / "figures")
 os.makedirs(FIGURES_DIR, exist_ok=True)
 
@@ -40,6 +40,7 @@ PALETTE = {
     "cl": "#009E73",  # green
     "cosine": "#E69F00",  # orange
     "adam": "#CC79A7",  # pink
+    "egs": "#D55E00",  # vermillion
 }
 
 # Research paper style — clean, minimal, publication-ready
@@ -79,6 +80,10 @@ matplotlib.rcParams.update(
 
 # Tier transition epochs: ETS t1=0.20, t2=0.45 over 100 epochs
 TIER_EPOCHS = [20, 45]  # end of Tier 1, end of Tier 2
+TIER_VCOLORS = ["#27AE60", "#E67E22"]  # green / orange
+
+# Module-level smoothing window — overridden by --smooth CLI flag
+SMOOTH_W = 7
 
 
 # DATA LOADING
@@ -159,7 +164,8 @@ def _load_json(path):
 
 
 # UTILITY
-def smooth(values, w=7):
+def smooth(values, w=None):
+    w = w if w is not None else SMOOTH_W
     a = np.array(values, dtype=float)
     return a if len(a) < w else uniform_filter1d(a, size=w)
 
@@ -1093,6 +1099,11 @@ def mode_all(ckpt):
                 "wideresnet_tiered_lps_mix_both_sgd_cosine_ep100_cifar100_s42",
                 PALETTE["adam"],
             ),
+            (
+                "EGS + mix (ours)",
+                "wideresnet_tiered_egs_freq10_mix_both_sgd_cosine_ep100_cifar100_s42",
+                PALETTE["egs"],
+            ),
         ],
         ckpt,
     )
@@ -1152,21 +1163,312 @@ def mode_ablation(ckpt):
     print_analysis(runs)
 
 
+# FIGURE 9  —  Per-Schedule Grid  (2 rows × N cols vs Static baseline)
+def fig9_schedule_grid(runs, static_key, schedule_keys, fname="fig9_schedule_grid.png"):
+    """
+    2-row × N-col grid: each column = one CL schedule overlaid with Static Baseline.
+    Row 0 = validation loss  |  Row 1 = validation accuracy.
+    Vertical dotted lines show ETS tier boundaries as reference; adaptive note added
+    for LPS/EGS panels.
+    """
+    cols = [k for k in schedule_keys if k in runs and runs[k][0] is not None]
+    if not cols:
+        print("  fig9: no schedule runs found, skipping.")
+        return
+
+    static_h, static_color = runs.get(static_key, (None, PALETTE["static"]))
+    n_cols = len(cols)
+
+    fig, axes = plt.subplots(2, n_cols, figsize=(5.5 * n_cols, 8))
+    if n_cols == 1:
+        axes = axes.reshape(2, 1)
+
+    fig.suptitle(
+        "Per-Schedule Comparison vs Static Baseline  ·  CIFAR-100  ·  WideResNet-28-10\n"
+        "Row 1: Validation Loss  ·  Row 2: Validation Accuracy"
+        "  ·  Solid = Static Baseline,  Dashed = CL Schedule",
+        fontsize=9,
+        fontweight="bold",
+    )
+
+    # Collect range data for uniform y-axes per row
+    all_vloss, all_vacc = [], []
+    for k in cols:
+        h, _ = runs[k]
+        if h:
+            all_vloss.extend(smooth(h["val_loss"]))
+            all_vacc.extend(smooth(h["val_acc"]) * 100)
+    if static_h:
+        all_vloss.extend(smooth(static_h["val_loss"]))
+        all_vacc.extend(smooth(static_h["val_acc"]) * 100)
+
+    for col_i, key in enumerate(cols):
+        h, color = runs[key]
+        ax_l = axes[0][col_i]
+        ax_a = axes[1][col_i]
+        short = key.replace(" (ours)", "")
+        n_ep = len(h["val_acc"]) if h else 100
+
+        for ax in [ax_l, ax_a]:
+            set_epoch_axis(ax, n_ep)
+            ax.set_xlabel("Epoch")
+
+        if col_i == 0:
+            ax_l.set_ylabel("Validation Loss")
+            ax_a.set_ylabel("Validation Accuracy (%)")
+
+        # Static baseline
+        if static_h:
+            x_s = ep(static_h)
+            ax_l.plot(
+                x_s,
+                smooth(static_h["val_loss"]),
+                color=static_color,
+                lw=1.6,
+                ls="-",
+                alpha=0.75,
+                label="Static Baseline",
+            )
+            ax_a.plot(
+                x_s,
+                smooth(static_h["val_acc"]) * 100,
+                color=static_color,
+                lw=1.6,
+                ls="-",
+                alpha=0.75,
+                label="Static Baseline",
+            )
+
+        # CL schedule
+        if h:
+            x = ep(h)
+            ax_l.plot(
+                x, smooth(h["val_loss"]), color=color, lw=2.2, ls="--", label=short
+            )
+            va = smooth(h["val_acc"]) * 100
+            ax_a.plot(x, va, color=color, lw=2.2, ls="--", label=short)
+
+            ep_b, val_b = best(h)
+            ax_a.scatter(
+                [ep_b], [val_b], color=color, s=55, zorder=6, edgecolors="white", lw=0.8
+            )
+            ax_a.annotate(
+                f"  {val_b:.2f}%",
+                xy=(ep_b, val_b),
+                fontsize=7.5,
+                color=color,
+                fontweight="bold",
+            )
+
+        # Tier boundary markers
+        for ax in [ax_l, ax_a]:
+            for ep_t, tc in zip(TIER_EPOCHS, TIER_VCOLORS):
+                ax.axvline(ep_t, color=tc, lw=0.9, ls=":", alpha=0.65, zorder=5)
+
+        if "LPS" in key or "EGS" in key:
+            for ax in [ax_l, ax_a]:
+                ax.text(
+                    0.02,
+                    0.02,
+                    "Adaptive tier transitions\n(ETS boundaries shown as ref.)",
+                    transform=ax.transAxes,
+                    fontsize=6.5,
+                    color="#888888",
+                    va="bottom",
+                    ha="left",
+                    style="italic",
+                )
+
+        # Panel titles
+        ax_l.set_title(f"({chr(ord('a') + col_i)})  {short}  —  Val Loss")
+        ax_a.set_title(f"({chr(ord('a') + n_cols + col_i)})  {short}  —  Val Accuracy")
+
+        ax_l.legend(loc="upper right", fontsize=7.5)
+        ax_a.legend(loc="lower right", fontsize=7.5)
+
+    # Apply uniform y-axes per row
+    if all_vloss:
+        lo, hi = _ylim_padded([all_vloss], pad_frac=0.08, lo_floor=0.0)
+        for ax in axes[0]:
+            ax.set_ylim(lo, hi)
+    if all_vacc:
+        lo, hi = _ylim_padded([all_vacc], pad_frac=0.08, lo_floor=0.0, hi_ceil=100.0)
+        for ax in axes[1]:
+            ax.set_ylim(lo, hi)
+
+    plt.tight_layout()
+    save(fig, fname)
+    plt.show()
+
+
+# FIGURE 10  —  Train vs Val Comparison  (all methods, two panels)
+def fig10_train_loss_comparison(runs, fname="fig10_train_loss_comparison.png"):
+    """
+    2-panel: all methods overlaid showing both training (dashed) and validation
+    (solid) curves in the same colour per method.
+    Left = loss curves  |  Right = accuracy curves.
+    """
+    import matplotlib.lines as mlines
+
+    valid = [(k, h, c) for k, (h, c) in runs.items() if h]
+    if not valid:
+        print("  fig10: no valid runs, skipping.")
+        return
+
+    fig, axes = plt.subplots(1, 2, figsize=(12, 4.5))
+    fig.suptitle(
+        "Train vs Validation — All Methods  ·  CIFAR-100  ·  WideResNet-28-10\n"
+        "Solid = Validation  ·  Dashed = Training",
+        fontsize=9,
+        fontweight="bold",
+    )
+
+    all_loss, all_acc, max_n = [], [], 1
+    method_handles = []
+
+    for label, h, color in valid:
+        max_n = max(max_n, len(h["val_acc"]))
+        lw = 2.2 if "(ours)" in label else 1.8
+
+        x = ep(h)
+        vl = smooth(h["val_loss"])
+        tl = smooth(h["train_loss"], w=3)
+        va = smooth(h["val_acc"]) * 100
+        ta = smooth(h["train_acc"], w=3) * 100
+
+        axes[0].plot(x, vl, color=color, lw=lw, ls="-", zorder=3)
+        axes[0].plot(x, tl, color=color, lw=lw * 0.7, ls="--", alpha=0.55, zorder=2)
+        axes[1].plot(x, va, color=color, lw=lw, ls="-", zorder=3)
+        axes[1].plot(x, ta, color=color, lw=lw * 0.7, ls="--", alpha=0.55, zorder=2)
+
+        ep_b, val_b = best(h)
+        axes[1].scatter(
+            [ep_b], [val_b], color=color, s=40, zorder=6, edgecolors="white", lw=0.8
+        )
+
+        all_loss.extend(vl)
+        all_loss.extend(tl)
+        all_acc.extend(va)
+        all_acc.extend(ta)
+
+        method_handles.append(
+            mlines.Line2D([], [], color=color, lw=lw, ls="-", label=label)
+        )
+
+    solid_h = mlines.Line2D([], [], color="black", lw=1.8, ls="-", label="Validation")
+    dash_h = mlines.Line2D(
+        [], [], color="black", lw=1.2, ls="--", alpha=0.6, label="Training"
+    )
+
+    for ax, title, ylabel, vals, kw in [
+        (axes[0], "(a)  Loss Curves", "Loss", all_loss, dict(lo_floor=0.0)),
+        (
+            axes[1],
+            "(b)  Accuracy Curves",
+            "Accuracy (%)",
+            all_acc,
+            dict(lo_floor=0.0, hi_ceil=100.0),
+        ),
+    ]:
+        ax.set_title(title)
+        ax.set_ylabel(ylabel)
+        ax.set_xlabel("Epoch")
+        set_epoch_axis(ax, max_n)
+        if vals:
+            lo, hi = _ylim_padded([vals], pad_frac=0.08, **kw)
+            ax.set_ylim(lo, hi)
+
+    fig.legend(
+        method_handles + [solid_h, dash_h],
+        [h.get_label() for h in method_handles] + ["— Validation", "-- Training"],
+        loc="lower center",
+        ncol=min(len(valid) + 2, 5),
+        bbox_to_anchor=(0.5, -0.06),
+        frameon=True,
+        fontsize=8,
+    )
+    plt.tight_layout(rect=[0, 0.09, 1, 1])
+    save(fig, fname)
+    plt.show()
+
+
+# MODE: schedules  —  all three CL schedules vs Static baseline
+def mode_schedules(ckpt):
+    print("\n  Loading all-schedule histories (WideResNet-28-10, seed=42)...")
+    runs = build_runs(
+        [
+            (
+                "Static Baseline",
+                "wideresnet_static_sgd_cosine_ep100_cifar100_s42",
+                PALETTE["static"],
+            ),
+            (
+                "ETS (ours)",
+                "wideresnet_tiered_ets_mix_both_sgd_cosine_ep100_cifar100_s42",
+                PALETTE["cl"],
+            ),
+            (
+                "LPS (ours)",
+                "wideresnet_tiered_lps_mix_both_sgd_cosine_ep100_cifar100_s42",
+                PALETTE["adam"],
+            ),
+            (
+                "EGS (ours)",
+                "wideresnet_tiered_egs_freq10_mix_both_sgd_cosine_ep100_cifar100_s42",
+                PALETTE["egs"],
+            ),
+        ],
+        ckpt,
+    )
+    print("\n  Generating schedule comparison figures...")
+    fig9_schedule_grid(
+        runs,
+        static_key="Static Baseline",
+        schedule_keys=["ETS (ours)", "LPS (ours)", "EGS (ours)"],
+        fname="fig9_schedule_grid.png",
+    )
+    fig10_train_loss_comparison(runs, fname="fig10_train_loss_comparison.png")
+    fig1_val_comparison(
+        runs,
+        title="All Schedules — CIFAR-100 · WideResNet-28-10",
+        fname="fig1_val_comparison_schedules.png",
+    )
+    fig5_summary(runs, fname="fig5_summary_schedules.png")
+    fig7_gap_over_epochs(runs, fname="fig7_gap_schedules.png")
+    print_analysis(runs)
+
+
 # CLI
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(
         description="Publication-quality training analysis"
     )
     parser.add_argument(
-        "--mode", default="all", choices=["baselines", "all", "ablation"]
+        "--mode",
+        default="all",
+        choices=["baselines", "all", "ablation", "schedules"],
     )
     parser.add_argument("--checkpoint_dir", default=CHECKPOINT_DIR)
+    parser.add_argument(
+        "--smooth",
+        type=int,
+        default=7,
+        metavar="W",
+        help="Smoothing window in epochs (default 7; use 1 to disable)",
+    )
     args = parser.parse_args()
+
+    global SMOOTH_W
+    SMOOTH_W = args.smooth
 
     print(f"\n  Mode           : {args.mode}")
     print(f"  Checkpoint dir : {args.checkpoint_dir}")
     print(f"  Figures dir    : {FIGURES_DIR}")
+    print(f"  Smooth window  : {SMOOTH_W}")
 
-    {"baselines": mode_baselines, "all": mode_all, "ablation": mode_ablation}[
-        args.mode
-    ](args.checkpoint_dir)
+    {
+        "baselines": mode_baselines,
+        "all": mode_all,
+        "ablation": mode_ablation,
+        "schedules": mode_schedules,
+    }[args.mode](args.checkpoint_dir)

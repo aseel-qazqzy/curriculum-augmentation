@@ -34,8 +34,7 @@ class CurriculumTransform:
 
     def __call__(self, img: Image.Image, difficulty: int = 1) -> torch.Tensor:
         from augmentations.policies import (
-            _TIER_OPS,
-            _TIER_N_OPS,
+            get_tier_ops,
             _TIER_STRENGTH_FRACS,
         )
         from augmentations.primitives import AUGMENTATION_REGISTRY
@@ -43,8 +42,9 @@ class CurriculumTransform:
         tier = int(difficulty)  # difficulty now carries tier integer (1/2/3)
         tier = max(1, min(3, tier))
 
-        pool = _TIER_OPS[tier]
-        n = min(_TIER_N_OPS[tier], len(pool))
+        tier_ops, n_ops = get_tier_ops(dataset=self.dataset)
+        pool = tier_ops[tier]
+        n = min(n_ops[tier], len(pool))
         active = random.sample(pool, n)
         op_strength = self.strength * _TIER_STRENGTH_FRACS[tier]
 

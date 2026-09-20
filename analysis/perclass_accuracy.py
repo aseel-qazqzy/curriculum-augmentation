@@ -212,7 +212,7 @@ def print_gain_table(base_accs, compare_accs, base_name, compare_name, n=10):
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--ckpt_dir", default="checkpoints")
+    parser.add_argument("--ckpt_dir", default="results/cluster/checkpoints")
     parser.add_argument("--data_dir", default="data/raw")
     parser.add_argument("--out_dir", default="results")
     parser.add_argument("--batch_size", type=int, default=256)

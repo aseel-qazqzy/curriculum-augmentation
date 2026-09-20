@@ -89,11 +89,23 @@ _TIER_N_OPS_14 = {1: 3, 2: 5, 3: 7}
 _TIER_N_OPS = {1: 3, 2: 5, 3: 8}
 
 
-def get_tier_ops(op_pool: int = 19) -> tuple[dict, dict]:
-    """Return (_TIER_OPS, _TIER_N_OPS) for the requested pool size (14 or 19)."""
+def get_tier_ops(op_pool: int = 19, dataset: str | None = None) -> tuple[dict, dict]:
+    """Return (_TIER_OPS, _TIER_N_OPS) for the requested pool size (14 or 19).
+
+    SVHN labels are digits, not flip-invariant (a flipped '6' isn't a valid '6'),
+    so `flip` is dropped from every tier's pool when dataset == "svhn". Rotation
+    (max 15°*strength) and shear are left in — mild digit rotation/shear is
+    standard in the AutoAugment/RandAugment SVHN policies.
+    """
     if op_pool == 14:
-        return _TIER_OPS_14, _TIER_N_OPS_14
-    return _TIER_OPS, _TIER_N_OPS
+        tier_ops, n_ops = _TIER_OPS_14, _TIER_N_OPS_14
+    else:
+        tier_ops, n_ops = _TIER_OPS, _TIER_N_OPS
+    if dataset == "svhn":
+        tier_ops = {
+            t: [op for op in ops if op != "flip"] for t, ops in tier_ops.items()
+        }
+    return tier_ops, n_ops
 
 
 # Strength as a fraction of the ceiling (self.strength).
@@ -170,7 +182,7 @@ class _FullStaticTransform:
         self.normalize = T.Normalize(mean, std)
         self.to_tensor = T.ToTensor()
         self.strength = strength
-        self._pool, self._n_ops = get_tier_ops(op_pool)
+        self._pool, self._n_ops = get_tier_ops(op_pool, dataset=dataset)
 
     def __call__(self, img):
         active = random.sample(self._pool[3], self._n_ops[3])
@@ -249,7 +261,7 @@ class ThreeTierCurriculumTransform:
             self._n_ops = _TIER_N_OPS  # ranked pool always uses 19-op sample counts
             self._op_ranking = "loss"
         else:
-            self._tier_ops, self._n_ops = get_tier_ops(op_pool)
+            self._tier_ops, self._n_ops = get_tier_ops(op_pool, dataset=dataset)
             self._op_strengths: dict[str, float] = {}
             self._op_ranking = "manual"
         if reverse:
@@ -432,7 +444,11 @@ class RandomAugmentTransform:
         std = STATS[dataset]["std"]
         self.normalize = T.Normalize(mean, std)
         self.to_tensor = T.ToTensor()
-        self.ops = [(name, fn) for name, (fn, _, _) in AUGMENTATION_REGISTRY.items()]
+        self.ops = [
+            (name, fn)
+            for name, (fn, _, _) in AUGMENTATION_REGISTRY.items()
+            if not (dataset == "svhn" and name == "flip")
+        ]
 
     def __call__(self, img: Image.Image) -> torch.Tensor:
         for _, fn in self.ops:

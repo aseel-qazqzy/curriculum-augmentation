@@ -212,7 +212,7 @@ def main():
     args = parser.parse_args()
 
     c_root = Path(args.c_root)
-    ckpt_dir = Path("checkpoints")
+    ckpt_dir = Path("results/cluster/checkpoints")
     save_dir = Path("results/figs")
     log_dir = Path("results/logs")
     save_dir.mkdir(parents=True, exist_ok=True)

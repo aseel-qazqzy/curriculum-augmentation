@@ -10,11 +10,14 @@ CIFAR100_MEAN = (0.5071, 0.4867, 0.4408)
 CIFAR100_STD = (0.2675, 0.2565, 0.2761)
 TINY_IMAGENET_MEAN = (0.4802, 0.4481, 0.3975)
 TINY_IMAGENET_STD = (0.2770, 0.2691, 0.2821)
+SVHN_MEAN = (0.4377, 0.4438, 0.4728)
+SVHN_STD = (0.1980, 0.2010, 0.1970)
 
 CIFAR_STATS = {
     "cifar10": {"mean": CIFAR10_MEAN, "std": CIFAR10_STD},
     "cifar100": {"mean": CIFAR100_MEAN, "std": CIFAR100_STD},
     "tiny_imagenet": {"mean": TINY_IMAGENET_MEAN, "std": TINY_IMAGENET_STD},
+    "svhn": {"mean": SVHN_MEAN, "std": SVHN_STD},
 }
 
 
@@ -218,6 +221,97 @@ def get_cifar100_loaders(
     val_str = f"{len(val_dataset):,}" if val_dataset else "none (full-train mode)"
     print(
         f"CIFAR-100 loaded | Train: {len(train_dataset):,} | Val: {val_str} | Test: {len(test_dataset):,}"
+    )
+    return train_loader, val_loader, test_loader
+
+
+def get_svhn_loaders(
+    root: str = "./data/raw",
+    batch_size: int = 128,
+    val_split: float = 0.1,
+    train_transform=None,
+    test_transform=None,
+    num_workers: int = 4,
+    debug: bool = False,
+):
+    """
+    Returns train, validation, and test DataLoaders for SVHN (cropped digits, "Format 2").
+
+    Uses the official train/test split only — the 531k-image "extra" split is not
+    loaded. Note: `datasets.SVHN` takes `split=` rather than CIFAR's `train=` boolean.
+    """
+    if train_transform is None or test_transform is None:
+        train_transform, test_transform = get_static_transforms("svhn")
+
+    full_train_dataset = datasets.SVHN(
+        root, split="train", download=True, transform=train_transform
+    )
+    full_val_dataset = datasets.SVHN(
+        root, split="train", download=True, transform=test_transform
+    )
+    test_dataset = datasets.SVHN(
+        root, split="test", download=True, transform=test_transform
+    )
+
+    if val_split == 0.0:
+        train_dataset = full_train_dataset
+        val_dataset = None
+    else:
+        val_size = int(len(full_train_dataset) * val_split)
+        if val_size < 1:
+            raise ValueError(f"val_split={val_split} produces an empty validation set.")
+        indices = torch.randperm(
+            len(full_train_dataset), generator=torch.Generator().manual_seed(42)
+        )
+        train_dataset = torch.utils.data.Subset(
+            full_train_dataset, indices[: len(full_train_dataset) - val_size]
+        )
+        val_dataset = torch.utils.data.Subset(
+            full_val_dataset, indices[len(full_train_dataset) - val_size :]
+        )
+
+    if debug:
+        train_dataset = torch.utils.data.Subset(train_dataset, range(512))
+        val_dataset = (
+            torch.utils.data.Subset(val_dataset, range(128)) if val_dataset else None
+        )
+        test_dataset = torch.utils.data.Subset(test_dataset, range(128))
+
+    pin_memory = torch.cuda.is_available()
+    persistent = num_workers > 0
+    train_loader = DataLoader(
+        train_dataset,
+        batch_size=batch_size,
+        shuffle=True,
+        num_workers=num_workers,
+        pin_memory=pin_memory,
+        persistent_workers=persistent,
+        drop_last=True,
+    )
+    val_loader = (
+        DataLoader(
+            val_dataset,
+            batch_size=batch_size,
+            shuffle=False,
+            num_workers=num_workers,
+            pin_memory=pin_memory,
+            persistent_workers=persistent,
+        )
+        if val_dataset
+        else None
+    )
+    test_loader = DataLoader(
+        test_dataset,
+        batch_size=batch_size,
+        shuffle=False,
+        num_workers=num_workers,
+        pin_memory=pin_memory,
+        persistent_workers=persistent,
+    )
+
+    val_str = f"{len(val_dataset):,}" if val_dataset else "none (full-train mode)"
+    print(
+        f"SVHN loaded | Train: {len(train_dataset):,} | Val: {val_str} | Test: {len(test_dataset):,}"
     )
     return train_loader, val_loader, test_loader
 

@@ -24,7 +24,7 @@ warnings.filterwarnings("ignore")
 _PROJECT_ROOT = Path(__file__).resolve().parent.parent
 sys.path.append(str(_PROJECT_ROOT))
 
-CHECKPOINT_DIR = str(_PROJECT_ROOT / "checkpoints")
+CHECKPOINT_DIR = str(_PROJECT_ROOT / "results" / "cluster" / "checkpoints")
 FIGURES_DIR = str(_PROJECT_ROOT / "results" / "figures")
 os.makedirs(FIGURES_DIR, exist_ok=True)
 

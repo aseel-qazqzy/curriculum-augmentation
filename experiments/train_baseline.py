@@ -3,21 +3,21 @@ train_baseline.py - baseline training, no curriculum
 augmentation: none / static / random / randaugment
 """
 
+import torch
+import torch.nn as nn
 import os
 import sys
 import argparse
 import time
 from datetime import datetime
 from pathlib import Path
-import torch
-import torch.nn as nn
-
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+import pycodestyle
 
 from data.datasets import (
     get_cifar10_loaders,
     get_cifar100_loaders,
     get_tiny_imagenet_loaders,
+    get_svhn_loaders,
     get_static_transforms,
     get_no_augmentation_transforms,
 )
@@ -41,6 +41,8 @@ DEFAULT_CONFIG = {
     "ra_m": 9,
     "experiment_name": "resnet18_static_aug_sgd_multistep",
 }
+
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 
 def _resolve_tier(val, frac, epochs):
@@ -162,7 +164,7 @@ def main(cfg: dict):
     ):
         from augmentations.policies import get_tier_ops
 
-        _pool, _ = get_tier_ops(cfg.get("op_pool", 19))
+        _pool, _ = get_tier_ops(cfg.get("op_pool", 19), dataset=cfg["dataset"])
         cfg["experiment_name"] = f"{cfg['experiment_name']}_p{len(_pool[3])}"
 
     cfg["run_ts"] = datetime.now().strftime("%Y-%m-%d %H:%M")
@@ -186,11 +188,13 @@ def main(cfg: dict):
     if cfg["augmentation"] == "tiered_curriculum":
         from augmentations.policies import (
             _TIER_STRENGTH_FRACS,
-            _TIER_N_OPS,
-            _TIER_OPS,
             _STRENGTH_RAMP_EPOCHS,
+            get_tier_ops,
         )
 
+        _TIER_OPS, _TIER_N_OPS = get_tier_ops(
+            cfg.get("op_pool", 19), dataset=cfg["dataset"]
+        )
         t1 = _resolve_tier(cfg.get("tier_t1"), 0.33, cfg["epochs"])
         t2 = _resolve_tier(cfg.get("tier_t2"), 0.66, cfg["epochs"])
         ceil = cfg.get("fixed_strength", 0.7)
@@ -301,8 +305,11 @@ def main(cfg: dict):
                 )
     if cfg["augmentation"] == "static_mixing":
         mix_mode = cfg.get("mix_mode", "both")
-        from augmentations.policies import _TIER_OPS, _TIER_N_OPS
+        from augmentations.policies import get_tier_ops
 
+        _TIER_OPS, _TIER_N_OPS = get_tier_ops(
+            cfg.get("op_pool", 19), dataset=cfg["dataset"]
+        )
         print(
             f"  Ops         : sample {_TIER_N_OPS[3]}/{len(_TIER_OPS[3])} from full pool, epoch 1"
             f"  |  strength {cfg.get('fixed_strength', 0.7)}"
@@ -351,6 +358,8 @@ def main(cfg: dict):
         loader_fn = get_cifar100_loaders
     elif cfg["dataset"] == "tiny_imagenet":
         loader_fn = get_tiny_imagenet_loaders
+    elif cfg["dataset"] == "svhn":
+        loader_fn = get_svhn_loaders
     else:
         loader_fn = get_cifar10_loaders
     # EGS: base dataset must return raw PIL images — CurriculumTransform handles
@@ -741,9 +750,9 @@ def main(cfg: dict):
                         "epoch": epoch,
                         "model_state_dict": model.state_dict(),
                         "optimizer_state": optimizer.state_dict(),
-                        "scheduler_state": scheduler.state_dict()
-                        if scheduler
-                        else None,
+                        "scheduler_state": (
+                            scheduler.state_dict() if scheduler else None
+                        ),
                         "val_acc": val_acc,
                         "history": history,
                         "cfg": {**cfg, "milestones": milestones},
@@ -766,9 +775,9 @@ def main(cfg: dict):
                         "epoch": epoch,
                         "model_state_dict": model.state_dict(),
                         "optimizer_state": optimizer.state_dict(),
-                        "scheduler_state": scheduler.state_dict()
-                        if scheduler
-                        else None,
+                        "scheduler_state": (
+                            scheduler.state_dict() if scheduler else None
+                        ),
                         "val_acc": 0.0,
                         "history": history,
                         "cfg": {**cfg, "milestones": milestones},
@@ -858,7 +867,7 @@ def parse_args():
         "--dataset",
         type=str,
         default=None,
-        choices=["cifar10", "cifar100", "tiny_imagenet"],
+        choices=["cifar10", "cifar100", "tiny_imagenet", "svhn"],
     )
     parser.add_argument(
         "--model",

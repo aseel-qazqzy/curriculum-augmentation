@@ -42,7 +42,7 @@ from data.datasets import get_cifar100_loaders
 
 # ── Paths ─────────────────────────────────────────────────────────────────────
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
-CHECKPOINT_DIR = PROJECT_ROOT / "checkpoints"
+CHECKPOINT_DIR = PROJECT_ROOT / "results" / "cluster" / "checkpoints"
 SAVE_DIR = PROJECT_ROOT / "results" / "figs" / "tsne"
 SAVE_DIR.mkdir(parents=True, exist_ok=True)
 

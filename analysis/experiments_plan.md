@@ -223,6 +223,8 @@ python -m experiments.train_baseline --dataset cifar100 --model wideresnet \
 --tier_t1 0.40 --tier_t2 0.70
 ```
 
+✅ **Cosine re-run of the τ1/τ2 = {0.10/0.30, 0.20/0.45, 0.33/0.66} grid done on WideResNet** (seed 42) — see Table 4.18b. This is the cosine re-run that Table 4.18 (ResNet-50 · MultiStep) flagged as needed to remove the LR–tier-boundary confound: results are 81.44% / 81.35% / 80.25% respectively, confirming the early > default > late ordering while showing the early-boundary advantage shrinks ~7× once the multistep confound is removed (default and early are within noise, Δ=0.09pp).
+
 ---
 
 ## Group G — EGS Hyperparameter Sensitivity

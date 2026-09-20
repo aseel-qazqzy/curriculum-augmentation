@@ -36,7 +36,7 @@ except ImportError:
     HAVE_SCIPY = False
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
-CHECKPOINT_DIR = PROJECT_ROOT / "checkpoints"
+CHECKPOINT_DIR = PROJECT_ROOT / "results" / "cluster" / "checkpoints"
 RESULTS_DIR = PROJECT_ROOT / "results" / "tables"
 
 # seed suffix pattern: _s42, _s123, _s456, …

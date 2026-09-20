@@ -3,19 +3,23 @@ analysis/seed_band_plot.py
 Multi-seed mean±std band plot — the primary thesis committee figure.
 
 Produces three publication-quality figures:
-  fig_seed_bands.png       — val accuracy mean ± 1σ bands + best-acc bar chart
-  fig_tier_zoom.png        — zoomed view of tier-transition dip/recovery (ep 10-60)
-  fig_seed_distribution.png — box plot of best acc per seed (consistency check)
+  fig_seed_bands_<model>.png       — val accuracy mean ± 1σ bands + best-acc bar chart
+  fig_tier_zoom_<model>.png        — zoomed view of tier-transition dip/recovery (ep 10-60)
+  fig_seed_distribution_<model>.png — box plot of best acc per seed (consistency check)
+
+Data source: tries checkpoint `*_history.pt` files first (results/cluster/checkpoints),
+falls back to parsing the raw cluster `.log` files (results/cluster/logs/<model>/) when
+no checkpoint history is found — log epoch resolution is sparse (epoch 1 + every 10th),
+so curves are linearly interpolated to per-epoch resolution before smoothing.
 
 Usage:
-    python analysis/seed_band_plot.py
-    python analysis/seed_band_plot.py --checkpoint_dir /path/to/checkpoints
-
-Pull histories from cluster first (one-time):
-    rsync -av user@cluster:/scratch/checkpoints/*_p19*_history.pt checkpoints/
+    python analysis/seed_band_plot.py --model wideresnet
+    python analysis/seed_band_plot.py --model resnet50
+    python analysis/seed_band_plot.py --model resnet50 --checkpoint_dir /path/to/checkpoints
 """
 
 import os
+import re
 import sys
 import argparse
 import warnings
@@ -40,68 +44,59 @@ try:
 except ImportError:
     HAVE_TORCH = False
 
-CHECKPOINT_DIR = str(_ROOT / "checkpoints")
+try:
+    from scipy import stats as sstats
+
+    HAVE_SCIPY = True
+except ImportError:
+    HAVE_SCIPY = False
+
+CHECKPOINT_DIR = str(_ROOT / "results" / "cluster" / "checkpoints")
+LOG_DIR_ROOT = _ROOT / "results" / "cluster" / "logs"
 FIGURES_DIR = str(_ROOT / "results" / "figures")
 os.makedirs(FIGURES_DIR, exist_ok=True)
 
 # ── experiment config ─────────────────────────────────────────────────────────
 SEEDS = [42, 123, 456, 3407, 1024]
 
-# ETS fixed boundaries: t1=0.20, t2=0.45 at 100 epochs
+# ETS fixed boundaries: t1=0.20, t2=0.45 at 100 epochs (model-independent)
 TIER_EPOCHS = [20, 45]
 
-# One entry per method.  `globs` are tried in order; first match wins.
-# {seed} is replaced with the actual seed integer.
+MODEL_DISPLAY_MAP = {"wideresnet": "WideResNet-28-10", "resnet50": "ResNet-50"}
+MODEL_LOG_SUBDIR = {"wideresnet": "wideresnet", "resnet50": "resnet"}
+MODEL_TOKEN = {"wideresnet": "wideresnet", "resnet50": "resnet50"}
+MODEL_DISPLAY = MODEL_DISPLAY_MAP["wideresnet"]  # overwritten in main() from --model
+
+# One entry per method. `token` = unique lowercase substring to match in a filename.
 METHODS = {
     "Static Mixing": {
-        "globs": [
-            "wideresnet_static_mixing_mix_both_sgd_cosine*ep100*cifar100*s{seed}*p19*history.pt",
-            "wideresnet_static_mixing*ep100*cifar100*s{seed}*p19*history.pt",
-            "wideresnet_static_mixing*ep100*cifar100*s{seed}*history.pt",
-        ],
+        "token": "static",
         "color": "#0072B2",  # blue
         "ls": "-",
         "lw": 1.8,
         "zorder": 2,
     },
     "ETS (ours)": {
-        "globs": [
-            "wideresnet_tiered_ets_mix_both_sgd_cosine*ep100*cifar100*s{seed}*p19*history.pt",
-            "wideresnet_tiered_ets*ep100*cifar100*s{seed}*p19*history.pt",
-        ],
+        "token": "ets",
         "color": "#009E73",  # green
         "ls": "--",
         "lw": 2.2,
         "zorder": 4,
     },
     "LPS (ours)": {
-        "globs": [
-            "wideresnet_tiered_lps_mix_both_sgd_cosine*ep100*cifar100*s{seed}*p19*history.pt",
-            "wideresnet_tiered_lps*ep100*cifar100*s{seed}*p19*history.pt",
-        ],
+        "token": "lps",
         "color": "#E69F00",  # orange
         "ls": "--",
         "lw": 2.2,
         "zorder": 3,
     },
     "EGS v2 (ours)": {
-        "globs": [
-            "egs_v2*ep100*cifar100*s{seed}*p19*history.pt",
-            "wideresnet_tiered_egs*ep100*cifar100*s{seed}*p19*history.pt",
-            "*egs*ep100*cifar100*s{seed}*p19*history.pt",
-        ],
+        "token": "egs",
         "color": "#CC79A7",  # pink
         "ls": ":",
         "lw": 2.0,
         "zorder": 3,
     },
-}
-
-# Pre-computed from 5-seed Wilcoxon + Cohen's d (thesis_results_tables.md)
-STATS = {
-    "ETS (ours)": {"p": "<0.001", "d": "9.83", "delta": "+3.79 pp"},
-    "LPS (ours)": {"p": "<0.001", "d": "10.12", "delta": "+3.84 pp"},
-    "EGS v2 (ours)": {"p": "<0.001", "d": "4.57", "delta": "+2.15 pp"},
 }
 
 # ── matplotlib style ──────────────────────────────────────────────────────────
@@ -141,14 +136,28 @@ matplotlib.rcParams.update(
 
 # ── data loading ──────────────────────────────────────────────────────────────
 
+# Dev-mode epoch line, e.g.:
+#   Epoch [ 10/100] Train: 3.5359 / 18.34% | Val: 2.8590 / 28.48% | Top-5: 60.04% | LR: ...
+LOG_EPOCH_RE = re.compile(
+    r"Epoch \[\s*(\d+)/\d+\]"
+    r"\s+Train:\s*[\d.]+\s*/\s*[\d.]+%"
+    r"\s+\|\s+Val:\s*[\d.]+\s*/\s*([\d.]+)%"
+)
+# FINAL RESULTS block: "  Test Top-1                  77.79%"
+LOG_TEST1_RE = re.compile(r"Test\s+Top-1\s*:?\s*([\d.]+)%")
 
-def _find_history(cfg, seed, checkpoint_dir):
-    for pattern in cfg["globs"]:
-        matches = glob(
-            os.path.join(checkpoint_dir, pattern.replace("{seed}", str(seed)))
-        )
-        if matches:
-            return matches[0]
+
+def _find_by_token(directory, token, seed, ext_suffix, model_token):
+    """First file in `directory` whose name contains both `token` (method) and
+    `model_token` (model), restricted to this seed via the `_s{seed}_p19` marker
+    every run filename carries."""
+    if not directory or not os.path.isdir(directory):
+        return None
+    candidates = sorted(Path(directory).glob(f"*_s{seed}_p19*{ext_suffix}"))
+    for c in candidates:
+        low = c.name.lower()
+        if token in low and model_token in low:
+            return c
     return None
 
 
@@ -160,22 +169,74 @@ def _load_pt(path):
         return None
 
 
-def gather_seeds(method_name, cfg, seeds, checkpoint_dir):
-    histories, found = [], []
+def _load_log_as_history(path):
+    """Parse a raw cluster .log file into (history dict, test_top1). Log epoch
+    rows are sparse (epoch 1 + every 10th), so the val_acc curve is linearly
+    interpolated to full per-epoch resolution. test_top1 comes from the
+    FINAL RESULTS block (single held-out evaluation, not used for model
+    selection) — that's the unbiased number, unlike best-val-so-far."""
+    text = path.read_text(errors="replace")
+    rows = [(int(m.group(1)), float(m.group(2))) for m in LOG_EPOCH_RE.finditer(text)]
+    if len(rows) < 2:
+        return None, None
+    xs = np.array([e for e, _ in rows], dtype=float)
+    ys = np.array([v for _, v in rows], dtype=float)
+    max_ep = int(xs.max())
+    full_x = np.arange(1, max_ep + 1)
+    full_y = np.interp(full_x, xs, ys)
+    t1_m = LOG_TEST1_RE.search(text)
+    test_top1 = float(t1_m.group(1)) if t1_m else None
+    return {"val_acc": full_y.tolist()}, test_top1
+
+
+def _load_checkpoint_test_top1(history_path):
+    """Mirror compare_methods.py: test_top1 lives in the sibling `_best.pth`,
+    not in the `_history.pt` file itself."""
+    best_path = Path(str(history_path).replace("_history.pt", "_best.pth"))
+    if not best_path.exists():
+        return None
+    try:
+        ckpt = torch.load(best_path, map_location="cpu", weights_only=False)
+        t1 = ckpt.get("test_top1")
+        if t1 is None:
+            return None
+        return t1 * 100 if t1 <= 1.0 else t1
+    except Exception:
+        return None
+
+
+def gather_seeds(method_name, cfg, seeds, checkpoint_dir, log_dir, model_token):
+    histories, found, test_top1s = [], [], []
     for seed in seeds:
-        path = _find_history(cfg, seed, checkpoint_dir)
-        if path is None:
-            print(f"    [{method_name}] seed {seed}: not found  (pull from cluster)")
-            continue
-        h = _load_pt(path)
+        h = None
+        src = "checkpoint"
+        t1 = None
+        path = _find_by_token(
+            checkpoint_dir, cfg["token"], seed, "history.pt", model_token
+        )
+        if path is not None:
+            h = _load_pt(path)
+            if h is not None:
+                t1 = _load_checkpoint_test_top1(path)
         if h is None:
+            path = _find_by_token(log_dir, cfg["token"], seed, ".log", model_token)
+            if path is not None:
+                h, t1 = _load_log_as_history(path)
+                src = "log"
+        if h is None:
+            print(
+                f"    [{method_name}] seed {seed}: not found (checked checkpoints + logs)"
+            )
             continue
         histories.append(h)
         found.append(seed)
+        test_top1s.append(t1)
         n = len(h["val_acc"])
-        bv = max(h["val_acc"]) * 100
+        bv = max(h["val_acc"])
+        bv = bv * 100 if bv <= 1.0 else bv
+        t1_str = f"{t1:.2f}%" if t1 is not None else "—"
         print(
-            f"    [{method_name}] seed {seed}: {n} ep, best={bv:.2f}%  ← {os.path.basename(path)}"
+            f"    [{method_name}] seed {seed}: {n} ep, best_val={bv:.2f}%  test={t1_str}  [{src}] ← {path.name if hasattr(path, 'name') else os.path.basename(path)}"
         )
     if not histories:
         print(f"    [{method_name}] — no seeds found, method skipped")
@@ -183,7 +244,38 @@ def gather_seeds(method_name, cfg, seeds, checkpoint_dir):
         print(
             f"    [{method_name}] {len(histories)}/{len(seeds)} seeds loaded  {found}"
         )
-    return histories, found
+    return histories, found, test_top1s
+
+
+def compute_stats_vs_static(md, key="test_top1_by_seed"):
+    """Paired (by seed) comparison of each method vs Static Mixing on `key`
+    (default: Test Top-1 — the unbiased, held-out metric) — computed
+    dynamically from the loaded seeds so it's correct for any model."""
+    if "Static Mixing" not in md:
+        return {}
+    static_by_seed = md["Static Mixing"][key]
+
+    out = {}
+    for name, m in md.items():
+        if name == "Static Mixing":
+            continue
+        by_seed = m[key]
+        pairs = [(s, v) for s, v in by_seed.items() if s in static_by_seed]
+        if len(pairs) < 2:
+            continue
+        a = np.array([static_by_seed[s] for s, _ in pairs])
+        b = np.array([v for _, v in pairs])
+        delta = float(b.mean() - a.mean())
+        entry = {"delta": f"{delta:+.2f} pp"}
+        if HAVE_SCIPY and len(pairs) >= 3:
+            diff = b - a
+            _, p = sstats.ttest_rel(b, a)
+            sd = diff.std(ddof=1)
+            d = float(diff.mean() / sd) if sd > 0 else float("nan")
+            entry["p"] = "<0.001" if p < 0.001 else f"={p:.3g}"
+            entry["d"] = f"{d:.2f}"
+        out[name] = entry
+    return out
 
 
 def compute_bands(histories, metric="val_acc", smooth_w=5):
@@ -239,18 +331,19 @@ def save_fig(fig, fname):
 # ── Figure 1: main band plot ──────────────────────────────────────────────────
 
 
-def fig_seed_bands(md, fname="fig_seed_bands.png"):
+def fig_seed_bands(md, stats=None, fname="fig_seed_bands.png"):
     """
     Left  — val accuracy curves: mean line + ±1σ shaded band + ghost seed lines.
     Right — bar chart of best val accuracy with ±1σ error bars + stat annotations.
     """
+    stats = stats or {}
     if not md:
         print("  fig_seed_bands: no data — skipping.")
         return
 
     fig, (ax_left, ax_right) = plt.subplots(1, 2, figsize=(12, 4.8))
     fig.suptitle(
-        "Validation Accuracy — Mean ± 1σ  ·  5 Seeds  ·  WideResNet-28-10  ·  CIFAR-100  ·  19-op Pool  ·  100 Epochs",
+        f"Validation Accuracy — Mean ± 1σ  ·  5 Seeds  ·  {MODEL_DISPLAY}  ·  CIFAR-100  ·  19-op Pool  ·  100 Epochs",
         fontsize=9,
         fontweight="bold",
     )
@@ -335,25 +428,25 @@ def fig_seed_bands(md, fname="fig_seed_bands.png"):
     ax_left.set_xlabel("Epoch")
     ax_left.set_ylabel("Validation Accuracy (%)")
     ax_left.set_title("(a)  Validation Accuracy — Mean ± 1σ  (shaded = ±1 std)")
-    ax_left.legend(loc="lower right", fontsize=7.5)
+    ax_left.legend(loc="upper left", fontsize=7.5)
     ax_left.xaxis.set_major_locator(MaxNLocator(integer=True, nbins=8))
 
-    # ── right: bar chart ──────────────────────────────────────────────────────
-    names = list(md.keys())
+    # ── right: bar chart — Test Top-1 (unbiased, held-out; not the val metric
+    #    used for model selection / tier scheduling) ───────────────────────────
+    names = [n for n in md if md[n]["test_top1_by_seed"]]
     colors = [md[n]["cfg"]["color"] for n in names]
 
-    best_means, best_stds = [], []
+    test_means, test_stds = [], []
     for n in names:
-        m = md[n]
-        bi = int(np.argmax(m["mean"]))
-        best_means.append(float(m["mean"][bi]))
-        best_stds.append(float(m["std"][bi]))
+        vals = np.array(list(md[n]["test_top1_by_seed"].values()))
+        test_means.append(float(vals.mean()))
+        test_stds.append(float(vals.std(ddof=1)) if len(vals) > 1 else 0.0)
 
     x_pos = np.arange(len(names))
     bars = ax_right.bar(
         x_pos,
-        best_means,
-        yerr=best_stds,
+        test_means,
+        yerr=test_stds,
         color=colors,
         edgecolor="black",
         linewidth=0.7,
@@ -363,14 +456,24 @@ def fig_seed_bands(md, fname="fig_seed_bands.png"):
         zorder=3,
     )
 
-    for bar, bm, bs, name in zip(bars, best_means, best_stds, names):
+    # stagger label height whenever neighbouring bars sit within 1pp of each other,
+    # so the 3-line stat annotations don't collide (common with ETS vs LPS)
+    label_lift = [0.0] * len(names)
+    for i in range(1, len(names)):
+        if abs(test_means[i] - test_means[i - 1]) < 1.0:
+            label_lift[i] = label_lift[i - 1] + 1.6
+
+    for bar, bm, bs, name, lift in zip(bars, test_means, test_stds, names, label_lift):
         stat_line = ""
-        if name in STATS:
-            s = STATS[name]
-            stat_line = f"\np{s['p']}  d={s['d']}  {s['delta']}"
+        if name in stats:
+            s = stats[name]
+            if "p" in s:
+                stat_line = f"\np{s['p']}  d={s['d']}  {s['delta']}"
+            else:
+                stat_line = f"\n{s['delta']}"
         ax_right.text(
             bar.get_x() + bar.get_width() / 2,
-            bm + bs + 0.25,
+            bm + bs + 0.25 + lift,
             f"{bm:.2f}% ±{bs:.2f}{stat_line}",
             ha="center",
             va="bottom",
@@ -381,10 +484,12 @@ def fig_seed_bands(md, fname="fig_seed_bands.png"):
     short = [n.replace(" (ours)", "").replace(" v2", "") for n in names]
     ax_right.set_xticks(x_pos)
     ax_right.set_xticklabels(short, rotation=12, ha="right")
-    ax_right.set_ylabel("Best Validation Accuracy (%)")
-    ax_right.set_title("(b)  Best Val Accuracy ± 1σ  (vs Static: p<0.001)")
-    y_bot = max(0, min(best_means) - 5)
-    y_top = min(100, max(best_means) + max(best_stds) + 4)
+    ax_right.set_ylabel("Test Top-1 Accuracy (%)")
+    ax_right.set_title(
+        "(b)  Test Top-1 Accuracy ± 1σ  (vs Static Mixing, paired t-test)"
+    )
+    y_bot = max(0, min(test_means) - 5)
+    y_top = min(100, max(test_means) + max(test_stds) + max(label_lift) + 4)
     ax_right.set_ylim(y_bot, y_top)
 
     plt.tight_layout()
@@ -407,7 +512,7 @@ def fig_tier_zoom(md, zoom=(10, 62), fname="fig_tier_zoom.png"):
     z0, z1 = zoom
     fig, ax = plt.subplots(figsize=(9, 4.2))
     fig.suptitle(
-        "Tier-Transition Detail  ·  Epochs 10 – 62  ·  CIFAR-100  ·  WideResNet-28-10\n"
+        f"Tier-Transition Detail  ·  Epochs 10 – 62  ·  CIFAR-100  ·  {MODEL_DISPLAY}\n"
         "Each tier unlock causes a brief accuracy dip as the model adapts — "
         "then recovers above the static baseline",
         fontsize=9,
@@ -528,7 +633,7 @@ def fig_seed_distribution(md, fname="fig_seed_distribution.png"):
 
     fig, ax = plt.subplots(figsize=(10, 5.5))
     fig.suptitle(
-        "Seed Consistency — Best Val Accuracy  ·  5 Seeds  ·  CIFAR-100  ·  WideResNet-28-10",
+        f"Seed Consistency — Best Val Accuracy  ·  5 Seeds  ·  CIFAR-100  ·  {MODEL_DISPLAY}",
         fontsize=10,
         fontweight="bold",
     )
@@ -617,8 +722,19 @@ def fig_seed_distribution(md, fname="fig_seed_distribution.png"):
 
 
 def main():
+    global MODEL_DISPLAY
+
     parser = argparse.ArgumentParser(description="Multi-seed band plot")
+    parser.add_argument(
+        "--model",
+        choices=list(MODEL_DISPLAY_MAP),
+        default="wideresnet",
+        help="Which model's runs to plot (selects results/cluster/logs/<model> as the log fallback)",
+    )
     parser.add_argument("--checkpoint_dir", default=CHECKPOINT_DIR)
+    parser.add_argument(
+        "--log_dir", default=None, help="Override the log fallback directory"
+    )
     parser.add_argument("--seeds", nargs="+", type=int, default=SEEDS)
     parser.add_argument(
         "--smooth",
@@ -632,7 +748,13 @@ def main():
         print("ERROR: torch not found — activate your venv first.")
         sys.exit(1)
 
-    print(f"\n  checkpoint_dir : {args.checkpoint_dir}")
+    MODEL_DISPLAY = MODEL_DISPLAY_MAP[args.model]
+    model_token = MODEL_TOKEN[args.model]
+    log_dir = args.log_dir or str(LOG_DIR_ROOT / MODEL_LOG_SUBDIR[args.model])
+
+    print(f"\n  model          : {MODEL_DISPLAY}")
+    print(f"  checkpoint_dir : {args.checkpoint_dir}")
+    print(f"  log_dir        : {log_dir}")
     print(f"  seeds          : {args.seeds}")
     print(f"  smooth window  : {args.smooth}")
     print(f"  figures → {FIGURES_DIR}\n")
@@ -640,8 +762,8 @@ def main():
     md = {}
     for method_name, cfg in METHODS.items():
         print(f"  ── {method_name}")
-        histories, found = gather_seeds(
-            method_name, cfg, args.seeds, args.checkpoint_dir
+        histories, found, test_top1s = gather_seeds(
+            method_name, cfg, args.seeds, args.checkpoint_dir, log_dir, model_token
         )
         if not histories:
             print()
@@ -654,25 +776,31 @@ def main():
             "mean": mean,
             "std": std,
             "curves": curves,
+            "seeds": found,
             "n_seeds": len(histories),
+            "test_top1_by_seed": {
+                s: t for s, t in zip(found, test_top1s) if t is not None
+            },
             "cfg": cfg,
         }
         print()
 
     if not md:
-        print("  No history files found locally.")
-        print("  Pull them from the cluster with:")
+        print("  No history files or logs found locally for this model.")
+        print("  Pull checkpoint histories from the cluster with:")
         print(
             "    rsync -av user@cluster:/path/checkpoints/*_p19*_history.pt checkpoints/"
         )
+        print(f"  ...or make sure {log_dir} contains the raw .log files.")
         sys.exit(0)
 
     print(f"  Methods loaded: {list(md.keys())}\n")
+    stats = compute_stats_vs_static(md)
     print("  Generating figures...\n")
 
-    fig_seed_bands(md)
-    fig_tier_zoom(md)
-    fig_seed_distribution(md)
+    fig_seed_bands(md, stats, fname=f"fig_seed_bands_{args.model}.png")
+    fig_tier_zoom(md, fname=f"fig_tier_zoom_{args.model}.png")
+    fig_seed_distribution(md, fname=f"fig_seed_distribution_{args.model}.png")
 
     print(f"\n  Done. Figures saved to: {os.path.abspath(FIGURES_DIR)}\n")
 

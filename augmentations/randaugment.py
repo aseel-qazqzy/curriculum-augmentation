@@ -325,6 +325,7 @@ class RandAugmentOp:
 STATS = {
     "cifar10": {"mean": (0.4914, 0.4822, 0.4465), "std": (0.2470, 0.2435, 0.2616)},
     "cifar100": {"mean": (0.5071, 0.4867, 0.4408), "std": (0.2675, 0.2565, 0.2761)},
+    "svhn": {"mean": (0.4377, 0.4438, 0.4728), "std": (0.1980, 0.2010, 0.1970)},
 }
 
 
@@ -356,10 +357,13 @@ class RandAugmentTransform:
         self.N = N
         self.M = M
         stats = STATS[dataset]
+        base_ops = [T.RandomCrop(32, padding=4)]
+        if dataset != "svhn":
+            # SVHN labels are digits — a flipped '6' isn't a valid '6'.
+            base_ops.append(T.RandomHorizontalFlip())
         self._transform = T.Compose(
-            [
-                T.RandomCrop(32, padding=4),
-                T.RandomHorizontalFlip(),
+            base_ops
+            + [
                 RandAugmentOp(N=N, M=M),
                 T.ToTensor(),
                 T.Normalize(stats["mean"], stats["std"]),

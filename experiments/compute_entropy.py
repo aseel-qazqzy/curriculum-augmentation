@@ -44,6 +44,8 @@ def build_raw_train_subset(dataset: str, root: str, val_split=0.1):
         full = datasets.CIFAR100(root, train=True, download=True, transform=transform)
     elif dataset == "cifar10":
         full = datasets.CIFAR10(root, train=True, download=True, transform=transform)
+    elif dataset == "svhn":
+        full = datasets.SVHN(root, split="train", download=True, transform=transform)
     elif dataset == "tiny_imagenet":
         train_dir = Path(root) / "tiny-imagenet-200" / "train"
         full = datasets.ImageFolder(train_dir, transform=transform)
@@ -228,7 +230,9 @@ def assign_egs_difficulties(
 
 # Load model from checkpoint
 def load_model(model_name: str, dataset: str, checkpoint: str, device):
-    num_classes = {"cifar10": 10, "cifar100": 100, "tiny_imagenet": 200}[dataset]
+    num_classes = {"cifar10": 10, "cifar100": 100, "tiny_imagenet": 200, "svhn": 10}[
+        dataset
+    ]
     model = get_model(model_name, num_classes=num_classes).to(device)
     ckpt = torch.load(checkpoint, map_location=device)
 
@@ -251,7 +255,9 @@ def train_proxy_from_scratch(
     Train a small proxy model with standard augmentation and stop early.
     Model weights are discarded after entropy is collected — not saved.
     """
-    num_classes = {"cifar10": 10, "cifar100": 100, "tiny_imagenet": 200}[dataset]
+    num_classes = {"cifar10": 10, "cifar100": 100, "tiny_imagenet": 200, "svhn": 10}[
+        dataset
+    ]
 
     if dataset in CIFAR_STATS:
         mean, std = CIFAR_STATS[dataset]["mean"], CIFAR_STATS[dataset]["std"]
@@ -259,10 +265,13 @@ def train_proxy_from_scratch(
         mean, std = TINY_IMAGENET_MEAN, TINY_IMAGENET_STD
 
     crop_size = 64 if dataset == "tiny_imagenet" else 32
+    spatial_ops = [transforms.RandomCrop(crop_size, padding=4)]
+    if dataset != "svhn":
+        # SVHN labels are digits — a flipped '6' isn't a valid '6'.
+        spatial_ops.append(transforms.RandomHorizontalFlip())
     train_transform = transforms.Compose(
-        [
-            transforms.RandomCrop(crop_size, padding=4),
-            transforms.RandomHorizontalFlip(),
+        spatial_ops
+        + [
             transforms.ToTensor(),
             transforms.Normalize(mean, std),
         ]
@@ -275,6 +284,10 @@ def train_proxy_from_scratch(
     elif dataset == "cifar10":
         full = datasets.CIFAR10(
             root, train=True, download=True, transform=train_transform
+        )
+    elif dataset == "svhn":
+        full = datasets.SVHN(
+            root, split="train", download=True, transform=train_transform
         )
     elif dataset == "tiny_imagenet":
         full = datasets.ImageFolder(
@@ -323,7 +336,9 @@ def train_proxy_from_scratch(
 
 # Compute per-sample entropy
 def compute_entropy(model, train_subset, dataset: str, device, batch_size: int = 256):
-    num_classes = {"cifar10": 10, "cifar100": 100, "tiny_imagenet": 200}[dataset]
+    num_classes = {"cifar10": 10, "cifar100": 100, "tiny_imagenet": 200, "svhn": 10}[
+        dataset
+    ]
     log_C = np.log(num_classes)
     print(f"Log for classes {log_C}")
 
@@ -389,7 +404,9 @@ def load_entropy(dataset: str, model_name: str) -> tuple[np.ndarray, float]:
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument(
-        "--dataset", required=True, choices=["cifar10", "cifar100", "tiny_imagenet"]
+        "--dataset",
+        required=True,
+        choices=["cifar10", "cifar100", "tiny_imagenet", "svhn"],
     )
     parser.add_argument(
         "--model",
