@@ -55,6 +55,7 @@ data/tiny-imagenet-200/
 data/tiny-imagenet-200.zip
 data/CIFAR-100-C/
 data/data/tiny-imagenet-200/
+data/*.mat
 augmentations/sota/
 
 # Results and checkpoints
