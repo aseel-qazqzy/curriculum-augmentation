@@ -68,3 +68,4 @@ configs/aug_difficulty_scores_*.pt
 
 run.sh
 run_ablation.sh
+*.md
