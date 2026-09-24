@@ -1,0 +1,25 @@
+Verbatim copies of the official MADAug implementation. DO NOT EDIT.
+
+Repository : https://github.com/JackHck/MADAug
+Commit     : 279b60a4d6e338aaa03ef0564a7bf94b8995f0b6
+Paper      : Hou, Zhang, Zhou. "When to Learn What: Model-Adaptive Data Augmentation
+             Curriculum". ICCV 2023. arXiv:2309.04747
+License    : the repository contains no LICENSE file.
+
+These files are reference copies only; they are never imported. The code that runs lives
+in ../core/ (minimal import/device adaptations of these files) and is checked against
+these copies by ../sanity_test.py (check_official_copies).
+
+projection.py is networks/projection.py in the official repository; all other files are
+at the repository root. networks/wideresnet.py is deliberately NOT copied: the controlled
+protocol uses this project's models/wideresnet.py (see docs/madaug_reproduction_notes.md).
+
+sha256
+a061df03f0a1b4f0c2cb2ddd65d43e11b512b1969f9ea5dc20bda781202c5035  adaptive_augmentor.py
+e56617d19d374dffa223cf02eac7ce6dc7a2bcdadebc2af87b46d9126bcaa24a  config.py
+46f15c53fb22625a438c7f35a8cc78065b416db8645b56be431c76bf1f958b2b  dataset.py
+e01555069920ff958e2c53dab0496e4d074beeae0dc82c33d72332f93f3fe6b9  main.sh
+4e66cc5ad2825ab7d5d6e0c910fbebac0452d64476149e7d29f1db385c7fe9d9  main_higher.py
+1532952a8365f4c3ad2b49cfd6a5a83e96ceb3e142edffc41ab186585c5b8096  operation.py
+064575c1e79939d481ed3f767d0c981307d2059c3c9c5e4c68fbf6dca49f7486  projection.py
+4772a50e8e07d6d01091bc82d6d847dbc4d75c937a8981f35106a1ab869e3828  utils.py
