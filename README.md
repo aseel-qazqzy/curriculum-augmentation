@@ -226,3 +226,19 @@ python -m experiments.train_baseline --dataset cifar100 --model wideresnet \
 Auto-built name pattern: `{model}_{aug}_{optimizer}_{scheduler}_ep{N}_{dataset}_s{seed}_p{pool}`
 
 - **Scheduler ablation** — cosine_wr collapsed 27.88pp at epoch 50 due to LR restart coinciding with Tier 3 activation; cosine_wr ruled out
+
+---
+
+## Changelog
+
+### 2026-10-01 — MADAug: opt-in `--search_batch_size` for 8 GB GPUs
+
+- **Why:** the official bi-level policy step (WRN-28-10, full 128-image batch, `higher`
+  second-order inner step) runs out of memory on the STUD partition's RTX 2070 SUPER
+  (7.6 GiB) at the first policy update of epoch 1; `expandable_segments:True` did not help.
+- **Change:** `--search_batch_size N` runs the explore/inner step on the first N images of
+  the shuffled batch only. The training step still uses all `--batch_size` images; all other
+  settings unchanged. Default `0` = official behaviour (full batch).
+- Run name gets an `_sb{N}` suffix; the value is recorded in the run config under
+  `madaug.search_batch_size`.
+- **Files:** `experiments/madaug/train_madaug.py`

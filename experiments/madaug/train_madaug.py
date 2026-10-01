@@ -106,6 +106,16 @@ def get_args(argv=None):
         default=0,
         help="stop each epoch after N steps (smoke tests)",
     )
+    # [madaug-adapt] hardware deviation, opt-in: the official bi-level step on the full
+    # 128-image batch does not fit in 8 GB (RTX 2070, STUD partition). N>0 runs the
+    # explore/inner step on the first N images of the (shuffled) batch only; the
+    # training step still uses all --batch_size images. 0 = official behaviour.
+    p.add_argument(
+        "--search_batch_size",
+        type=int,
+        default=0,
+        help="images per bi-level policy update (0 = full batch, official)",
+    )
     return p.parse_args(argv)
 
 
@@ -147,6 +157,8 @@ def git_info() -> dict:
 
 def run_name(args) -> str:
     name = f"madaug_cifar100_wrn28-10_ep{args.epochs}_s{args.seed}"
+    if args.search_batch_size and args.search_batch_size < args.batch_size:
+        name += f"_sb{args.search_batch_size}"
     if args.debug_n_train or args.debug_n_eval or args.max_steps:
         name += "_debug"
     if args.stop_after_epochs:
@@ -172,6 +184,7 @@ def train(
     device,
     stats,
     max_steps=0,
+    search_batch_size=0,
 ):
     objs = AvgrageMeter()
     top1 = AvgrageMeter()
@@ -184,12 +197,18 @@ def train(
             device, non_blocking=True
         )  # [madaug-adapt] .cuda() -> device
         if epoch > bi_epochs and step % search_freq == 0:
+            # [madaug-adapt] --search_batch_size: policy update on a subset of the batch
+            if search_batch_size and search_batch_size < input.size(0):
+                input_meta = input[:search_batch_size]
+                target_meta = target[:search_batch_size]
+            else:
+                input_meta, target_meta = input, target
             h_optimizer.zero_grad()
             with higher.innerloop_ctx(gf_model, gf_optimizer) as (meta_model, diffopt):
                 mdaaug.gf_model = meta_model
-                aug_image = mdaaug(input, mode="explore")
+                aug_image = mdaaug(input_meta, mode="explore")
                 logits = meta_model.g(aug_image)
-                loss = criterion(logits, target)
+                loss = criterion(logits, target_meta)
                 nn.utils.clip_grad_norm_(meta_model.parameters(), grad_clip)
                 diffopt.step(loss)
 
@@ -204,10 +223,19 @@ def train(
 
             # diagnostics only (read-only)
             stats["h_updates"] += 1
-            gn = float(sum(p.grad.norm() ** 2 for p in mdaaug.h_model.parameters() if p.grad is not None) ** 0.5)
+            gn = float(
+                sum(
+                    p.grad.norm() ** 2
+                    for p in mdaaug.h_model.parameters()
+                    if p.grad is not None
+                )
+                ** 0.5
+            )
             stats["epoch_h_grad_norms"].append(gn)
             stats["last_val_loss_meta"] = loss.item()
-            stats["nonfinite"] += int(not math.isfinite(gn)) + int(not math.isfinite(stats["last_val_loss_meta"]))
+            stats["nonfinite"] += int(not math.isfinite(gn)) + int(
+                not math.isfinite(stats["last_val_loss_meta"])
+            )
             h_optimizer.step()
 
             mdaaug.gf_model = copy.deepcopy(gf_model)
@@ -504,6 +532,7 @@ def main(argv=None):
             "proj_learning_rate": args.proj_learning_rate,
             "proj_weight_decay": args.proj_weight_decay,
             "grad_clip": args.grad_clip,
+            "search_batch_size": args.search_batch_size or args.batch_size,
             "policy_val_batch": valid_queue.batch_size,
         },
         "official_repo": {
@@ -518,9 +547,14 @@ def main(argv=None):
             "cudnn": torch.backends.cudnn.version(),
             "higher": getattr(higher, "__version__", None) or _pkg_version("higher"),
             "python": sys.version.split()[0],
-            "gpu": torch.cuda.get_device_name(device) if device.type == "cuda" else None,
-            "gpu_total_mem_gib": (torch.cuda.get_device_properties(device).total_memory / 2**30)
-            if device.type == "cuda" else None,
+            "gpu": torch.cuda.get_device_name(device)
+            if device.type == "cuda"
+            else None,
+            "gpu_total_mem_gib": (
+                torch.cuda.get_device_properties(device).total_memory / 2**30
+            )
+            if device.type == "cuda"
+            else None,
         },
     }
     (out / "configs" / f"{name}.json").write_text(
@@ -563,6 +597,7 @@ def main(argv=None):
             device,
             stats,
             args.max_steps,
+            args.search_batch_size,
         )
         logging.info(f"train_acc {train_acc} train_obj {train_obj}")
 
@@ -585,7 +620,12 @@ def main(argv=None):
             ("test_top5", test_top5 * 100),
             ("test_loss", test_loss),
             ("h_updates", stats["h_updates"] - h_before),
-            ("h_grad_norm_mean", float(np.mean(stats["epoch_h_grad_norms"])) if stats["epoch_h_grad_norms"] else None),
+            (
+                "h_grad_norm_mean",
+                float(np.mean(stats["epoch_h_grad_norms"]))
+                if stats["epoch_h_grad_norms"]
+                else None,
+            ),
             ("h_grad_norm_min", min(stats["epoch_h_grad_norms"], default=None)),
             ("h_grad_norm_max", max(stats["epoch_h_grad_norms"], default=None)),
             ("nonfinite", stats["nonfinite"] - nonfinite_before),
@@ -595,8 +635,18 @@ def main(argv=None):
                 / max(1, stats["train_images"] - img_before),
             ),
             ("epoch_time_s", time.time() - t0),
-            ("gpu_mem_peak_alloc_gib", torch.cuda.max_memory_allocated(device) / 2**30 if device.type == "cuda" else None),
-            ("gpu_mem_peak_reserved_gib", torch.cuda.max_memory_reserved(device) / 2**30 if device.type == "cuda" else None),
+            (
+                "gpu_mem_peak_alloc_gib",
+                torch.cuda.max_memory_allocated(device) / 2**30
+                if device.type == "cuda"
+                else None,
+            ),
+            (
+                "gpu_mem_peak_reserved_gib",
+                torch.cuda.max_memory_reserved(device) / 2**30
+                if device.type == "cuda"
+                else None,
+            ),
         ):
             history[k].append(v)
         logging.info(
@@ -623,9 +673,20 @@ def main(argv=None):
                 {"run_name": name, "complete": False, "history": history}, indent=2
             )
         )
-        if args.stop_after_epochs and epoch + 1 >= args.stop_after_epochs and epoch + 1 < args.epochs:
-            logging.info(f"Smoke test: stopping after epoch {epoch} (schedule is for {args.epochs} epochs)")
-            return {"run_name": name, "complete": False, "stopped_after_epoch": epoch, "history": history}
+        if (
+            args.stop_after_epochs
+            and epoch + 1 >= args.stop_after_epochs
+            and epoch + 1 < args.epochs
+        ):
+            logging.info(
+                f"Smoke test: stopping after epoch {epoch} (schedule is for {args.epochs} epochs)"
+            )
+            return {
+                "run_name": name,
+                "complete": False,
+                "stopped_after_epoch": epoch,
+                "history": history,
+            }
 
     final = {
         "run_name": name,
