@@ -89,6 +89,14 @@ TRAIN_SUBS = [
         "imports for the three controlled changes",
     ),
     (
+        "sys.path.insert(0, str(Path(__file__).resolve().parent.parent))\n",
+        "# [controlled] the copy sits two levels deeper: parents[3] is the repo root that the original's\n"
+        "# parent.parent pointed to. parent.parent here would be experiments/madaug/, whose data.py\n"
+        "# shadows the data/ package in spawned DataLoader workers (macOS).\n"
+        "sys.path.insert(0, str(Path(__file__).resolve().parents[3]))\n",
+        "path fix: keep sys.path pointing at the repo root from the copy's deeper location",
+    ),
+    (
         '        cfg["experiment_name"] = f"{cfg[\'experiment_name\']}_p{len(_pool[3])}"\n',
         '        cfg["experiment_name"] = f"{cfg[\'experiment_name\']}_p{len(_pool[3])}"\n'
         "\n"

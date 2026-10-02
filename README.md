@@ -231,6 +231,22 @@ Auto-built name pattern: `{model}_{aug}_{optimizer}_{scheduler}_ep{N}_{dataset}_
 
 ## Changelog
 
+### 2026-10-02 — Controlled baselines: fix `sys.path` in `train_controlled.py` (macOS crash)
+
+- **Why:** the copied line `sys.path.insert(0, Path(__file__).parent.parent)` pointed at
+  `experiments/madaug/` from the copy's deeper location. On macOS, DataLoader workers start
+  with spawn, inherit that path, and import `experiments/madaug/data.py` in place of the
+  `data/` package, so they crash with `No module named 'data.datasets'; 'data' is not a package`.
+  Linux (fork) was not affected.
+- **Change:** new substitution in `derive.py` that makes the copy use `parents[3]` (the repo
+  root, the same directory the original pointed to); `train_controlled.py` regenerated.
+  No change to the training logic. Frozen originals untouched.
+- `protocol_test.py`: re-pinned the sha256 of `train_madaug.py` in `MADAUG_MANIFEST` to the
+  version from the 2026-10-01 `--search_batch_size` commit (8e208d8), which had left the check failing.
+- **Files:** `experiments/madaug/controlled_baselines/derive.py`,
+  `experiments/madaug/controlled_baselines/train_controlled.py`,
+  `experiments/madaug/controlled_baselines/protocol_test.py`
+
 ### 2026-10-01 — MADAug: opt-in `--search_batch_size` for 8 GB GPUs
 
 - **Why:** the official bi-level policy step (WRN-28-10, full 128-image batch, `higher`

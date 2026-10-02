@@ -79,7 +79,8 @@ COMMON = [
     "42",
 ]
 
-# sha256 of the MADAug integration as reviewed on 2026-09-24 (must stay unchanged)
+# sha256 of the MADAug integration as reviewed on 2026-09-24 (must stay unchanged);
+# train_madaug.py re-pinned 2026-10-02 after 8e208d8 (opt-in --search_batch_size, default = official)
 MADAUG_MANIFEST = {
     "experiments/madaug/core/__init__.py": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
     "experiments/madaug/core/adaptive_augmentor.py": "e7ffb276f56109b44b75440732f9ca0d2a3d0646adaf4164d300cc02fd24fbeb",
@@ -89,7 +90,7 @@ MADAUG_MANIFEST = {
     "experiments/madaug/core/projection.py": "1483858f7df654defaab57fe8212834a65596500af2d08d633c86252134551df",
     "experiments/madaug/data.py": "5d1d2dfc2edd46924d3d93ccb3f7621754eac1ca72edafd1e14afc0b649bc10e",
     "experiments/madaug/wrn_fg.py": "9fbf426d2021ce8b7c78e41c969fa30a63d36cdc76a7a6280912baec6441449f",
-    "experiments/madaug/train_madaug.py": "3aee1552ecf98c5783fd1074bc734bb1b9f0adb6bdefeab06c9a710dedf6ffec",
+    "experiments/madaug/train_madaug.py": "1bd974356eb27491f39a04e6e320ebbfa550671b643974b3805dcd2d35fda946",
     "experiments/madaug/make_split.py": "69f373cc202b7e4495a66851c6eb8513e075708199b63b539267771fd62422ba",
     "experiments/madaug/splits/cifar100_val1000.json": "34919d3734e1302c2e1d6bc9923df20a44973a08b2fbeb258a8b3fe952a987f7",
 }

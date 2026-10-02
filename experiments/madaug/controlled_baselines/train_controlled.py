@@ -56,7 +56,10 @@ DEFAULT_CONFIG = {
     "experiment_name": "resnet18_static_aug_sgd_multistep",
 }
 
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+# [controlled] the copy sits two levels deeper: parents[3] is the repo root that the original's
+# parent.parent pointed to. parent.parent here would be experiments/madaug/, whose data.py
+# shadows the data/ package in spawned DataLoader workers (macOS).
+sys.path.insert(0, str(Path(__file__).resolve().parents[3]))
 
 
 def _resolve_tier(val, frac, epochs):
