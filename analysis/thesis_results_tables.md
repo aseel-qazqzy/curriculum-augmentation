@@ -855,3 +855,21 @@ Model: WideResNet-28-10  |  Dataset: CIFAR-100  |  val_split: 0.1  |  Updated: 2
 | Tiered LPS | 69.47% | 30.5 *(1 seed)* |
 
 ---
+
+---
+
+## Table E6 — MADAug · Controlled Protocol · WideResNet-28-10 · CIFAR-100 · 200 epochs · 5 seeds
+
+**Config:** controlled 49k/1k split · final-epoch reporting · FP32 · grad clip 5 · plain CE · `experiments/madaug/train_madaug.py`
+**Status:** recorded 2026-10-05; config identity across seeds still to be confirmed (see `analysis/madaug_controlled_cifar100_wrn28-10_5seeds_2026-10-05.md`).
+
+| Seed | Test Top-1 | Error |
+|:---:|:---:|:---:|
+| 42 | 81.73% | 18.27 |
+| 123 | 80.90% | 19.10 |
+| 456 | 79.16% | 20.84 |
+| 1024 | 79.73% | 20.27 |
+| 3407 | 81.47% | 18.53 |
+| **Mean ± SD (n−1)** | **80.60% ± 1.11%** | **19.40 ± 1.11** |
+
+> SD is ~4× that of controlled ETS (0.27) / LPS (0.31). The results are bimodal: s42/123/3407 average 81.37%, s456/1024 average 79.44%. Final train accuracy differs strongly (s1024 85.92% vs s3407 96.23%). It is measured on policy-augmented images, so this is most likely a policy-regime effect, but verify that the configs are identical.

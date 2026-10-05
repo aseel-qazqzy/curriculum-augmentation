@@ -231,6 +231,34 @@ Auto-built name pattern: `{model}_{aug}_{optimizer}_{scheduler}_ep{N}_{dataset}_
 
 ## Changelog
 
+### 2026-10-05 — MADAug per-seed analysis script (read-only)
+
+- `analysis/madaug_policy_analysis.py` loads the 5 controlled MADAug runs (configs, metrics, `*_final.pth`)
+  and reports: config identity, clean train accuracy, the learned policy per seed (op probabilities and
+  magnitudes on the 1k val images), a 5x5 policy-hardness matrix, per-epoch dynamics, and Brown-Forsythe /
+  Welch tests against the controlled baselines. It trains nothing and writes only to `--out_dir`
+  (default `results/madaug_analysis/`).
+- **Files (new):** `analysis/madaug_policy_analysis.py`
+
+### 2026-10-05 — RandAugment + TrivialAugment external baselines (controlled CIFAR-100 protocol)
+
+- **Why:** a like-for-like comparison against strong search-free baselines, alongside MADAug,
+  under the controlled 49k/1k protocol (WRN-28-10, 200 ep, final-epoch reporting).
+- **Implementation:** the official `aug_lib.py` from `automl/trivialaugment@e6545d8` (MIT), vendored
+  with a one-line Python 3.11 fix (`@dataclass(frozen=True)` on `MinMax`). RandAugment uses N=2, M=14
+  (`fixed_standard`, i.e. the RA paper's CIFAR-100 WRN-28-10 setting); TrivialAugment uses `wide_standard`.
+  Both use 31 strength levels.
+- Split, normalisation, Cutout(16), model, optimizer/scheduler, seeding and evaluation are imported
+  from the MADAug controlled pipeline. The training step is MADAug's minus the policy update
+  (CE, grad clip 5, FP32).
+- Outputs go to `results/external_baselines/`. Run names look like
+  `randaugment_n2m14_cifar100_wrn28-10_ep200_s42` and `trivialaugment_wide_cifar100_wrn28-10_ep200_s42`.
+- `python -m experiments.external_baselines.sanity_test` runs 36 checks and all pass.
+- **No existing file changed** apart from this README entry.
+- **Files (new):** `experiments/external_baselines/{__init__,data,train_external,sanity_test}.py`,
+  `experiments/external_baselines/run_external.sbatch`,
+  `experiments/external_baselines/vendor/{__init__.py,aug_lib.py,aug_lib_official.py.orig,LICENSE,SOURCE.txt}`
+
 ### 2026-10-02 — Controlled baselines: fix `sys.path` in `train_controlled.py` (macOS crash)
 
 - **Why:** the copied line `sys.path.insert(0, Path(__file__).parent.parent)` pointed at

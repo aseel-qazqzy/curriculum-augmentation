@@ -1,0 +1,34 @@
+Vendored official TrivialAugment augmentation library (also provides the RandAugment sampler)
+=============================================================================================
+
+Paper (TA)   : S. G. Müller, F. Hutter. "TrivialAugment: Tuning-free Yet State-of-the-Art Data
+               Augmentation". ICCV 2021. arXiv:2103.10158
+Paper (RA)   : E. D. Cubuk, B. Zoph, J. Shlens, Q. V. Le. "RandAugment: Practical automated data
+               augmentation with a reduced search space". NeurIPS 2020. arXiv:1909.13719
+Repository   : https://github.com/automl/trivialaugment   (official, by the TA author)
+Commit       : e6545d80affcc18b7024185a096e93e21010023e  (master, 2023-03-07)
+File         : aug_lib.py
+License      : MIT (vendor/LICENSE, copied from the same commit)
+
+Why this file and not a reimplementation
+  * The TA README: "we recommend to simply copy over the file aug_lib.py to your codebase".
+  * It is the code path that produced the TA paper's CIFAR-100 WRN-28-10 numbers
+    (TrivialAugment/augmentations.py::get_randaugment -> aug_lib.UniAugmentWeighted / aug_lib.RandAugment).
+  * RandAugment has no official PyTorch implementation (official code is TF1 graph code in
+    tensorflow/tpu, ImageNet-only). aug_lib.RandAugment is the sampler the TA authors used to
+    reproduce RandAugment on CIFAR-100 WRN-28-10 with the paper's N=2, M=14
+    (confs/wresnet28x10_cifar100_b128_maxlr.1_randaug_fixedsesp_200epochs_2_nowarmup.yaml).
+
+Files
+  aug_lib_official.py.orig   byte-for-byte copy of the official file
+                             sha256 8f5f9febb671fd12be067e311dbdcb837a2a29c672861f20c2cf03732fdd2868
+  aug_lib.py                 the imported copy
+                             sha256 c25d9b858309487d6fcc54a8d8ec4d848f268c1deafecdeba7260d75a2a752f3
+
+The ONLY change (line 9), required to import on Python >= 3.11:
+  - @dataclass
+  + @dataclass(frozen=True)  # [py3.11-patch] only change vs. official; see SOURCE.txt
+  Python 3.11 rejects the unhashable MinMax(...) instances used as dataclass field defaults in
+  MinMaxVals ("mutable default ... is not allowed"). Freezing MinMax makes it hashable. MinMax
+  objects are never mutated anywhere in aug_lib.py, so sampling, ranges and op behaviour are
+  unchanged. sanity_test.py asserts the diff against the .orig file is exactly this line.

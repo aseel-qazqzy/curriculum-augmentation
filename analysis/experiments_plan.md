@@ -322,6 +322,7 @@ python -m experiments.train_baseline --dataset cifar100 --model wideresnet \
 | Entropy trajectory plot | EGS logs | How does model confidence evolve across training? | pending |
 | Train–val gap inversion analysis | All histories | Does curriculum reduce overfitting (train acc ≈ val acc)? | pending |
 | MADAug comparison vs published numbers | Their paper | How does the method compare to the closest prior work? | pending |
+| **MADAug controlled rerun (49k/1k, 200ep, 5 seeds)** | `train_madaug.py` | Like-for-like comparison with closest prior work | done — 80.60% ± 1.11% (s42=81.73, s123=80.90, s456=79.16, s1024=79.73, s3407=81.47) · config identity across seeds to verify · SD ~4× ETS/LPS |
 
 ### Group J Commands
 
