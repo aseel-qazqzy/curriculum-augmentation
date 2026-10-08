@@ -398,7 +398,18 @@ def main():
         default=0.1,
         help="Must match the val_split used in training (default: 0.1)",
     )
+    parser.add_argument(
+        "--checkpoint_dir",
+        type=str,
+        default=None,
+        help="Directory with *_best.pth files (default: results/cluster/checkpoints)",
+    )
     args = parser.parse_args()
+
+    if args.checkpoint_dir:
+        global CHECKPOINT_DIR
+        CHECKPOINT_DIR = Path(args.checkpoint_dir).resolve()
+    print(f"Checkpoints: {CHECKPOINT_DIR}")
 
     device = torch.device(
         "cuda"

@@ -242,6 +242,7 @@ Auto-built name pattern: `{model}_{aug}_{optimizer}_{scheduler}_ep{N}_{dataset}_
   images are unchanged. `grade_cam.py` now takes row labels from `valset.classes` at runtime and
   warns on a mismatch.
 - **Action:** regenerate `gradcam_grid_cifar100.pdf` and the t-SNE grid on the cluster.
+- `tsne_features.py` gains `--checkpoint_dir` (default unchanged: `results/cluster/checkpoints`), as in `grade_cam.py`.
 - **Files:** `analysis/grade_cam.py`, `analysis/tsne_features.py`
 
 ### 2026-10-05 — MADAug per-seed analysis script (read-only)
