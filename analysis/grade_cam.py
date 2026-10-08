@@ -62,13 +62,15 @@ KNOWN_ACCS_CIFAR100 = {
 
 # 6 semantically diverse CIFAR-100 classes (subset of tsne_features.py's 15) —
 # one test image per class becomes one row, labelled by class name.
+# Names are only documentation: row labels are read from valset.classes at
+# runtime, so an id/name mismatch can no longer mislabel the figure.
 SELECTED_CLASSES_CIFAR100 = {
     8: "bicycle",
     30: "dolphin",
     31: "elephant",
-    72: "pickup_truck",
-    81: "mushroom",
-    96: "sunflower",
+    72: "seal",
+    81: "streetcar",
+    96: "willow_tree",
 }
 
 # ── Tiny-ImageNet grid ───────────────────────────────────────────────────────
@@ -215,7 +217,13 @@ def _select_rows(valset, dataset: str, indices_override: list[int] | None):
             if idx is None:
                 print(f"  WARNING: no sample found for class {class_name!r}, skipping")
                 continue
-            rows.append((idx, class_name))
+            true_name = valset.classes[class_id]
+            if true_name != class_name:
+                print(
+                    f"  WARNING: class {class_id} is {true_name!r}, not {class_name!r}; "
+                    f"using {true_name!r}"
+                )
+            rows.append((idx, true_name))
         return rows
 
     if dataset == "tiny_imagenet":

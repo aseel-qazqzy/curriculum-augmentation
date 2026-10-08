@@ -231,6 +231,19 @@ Auto-built name pattern: `{model}_{aug}_{optimizer}_{scheduler}_ep{N}_{dataset}_
 
 ## Changelog
 
+### 2026-10-08 — Fix wrong CIFAR-100 class names in Grad-CAM and t-SNE figures
+
+- **Bug:** both scripts hard-coded class IDs together with a separate list of names that did not match
+  CIFAR-100's alphabetical fine-label order. Grad-CAM rows 72/81/96 were labelled pickup_truck /
+  mushroom / sunflower but are seal / streetcar / willow_tree. In the t-SNE legend, 8 of 15 names
+  were wrong (40 lamp, 55 otter, 66 raccoon, 72 seal, 80 squirrel, 81 streetcar, 90 train, 96 willow_tree).
+  The heatmaps and embeddings were always correct (computed from true labels); only the names were wrong.
+- **Fix:** names corrected to match the IDs (checked against `data/cifar-100-python/meta`). The selected
+  images are unchanged. `grade_cam.py` now takes row labels from `valset.classes` at runtime and
+  warns on a mismatch.
+- **Action:** regenerate `gradcam_grid_cifar100.pdf` and the t-SNE grid on the cluster.
+- **Files:** `analysis/grade_cam.py`, `analysis/tsne_features.py`
+
 ### 2026-10-05 — MADAug per-seed analysis script (read-only)
 
 - `analysis/madaug_policy_analysis.py` loads the 5 controlled MADAug runs (configs, metrics, `*_final.pth`)

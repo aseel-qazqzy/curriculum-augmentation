@@ -62,6 +62,8 @@ RUNS = {
 # 15 semantically distinct CIFAR-100 classes (indices 0–99).
 # Chosen for visual separation: mix of animals, vehicles, objects, nature.
 SELECTED_CLASS_IDS = [4, 8, 13, 14, 23, 30, 31, 40, 55, 66, 72, 80, 81, 90, 96]
+# Must match SELECTED_CLASS_IDS under CIFAR-100's alphabetical fine-label order
+# (checked against data/cifar-100-python/meta).
 SELECTED_CLASS_NAMES = [
     "beaver",
     "bicycle",
@@ -70,14 +72,14 @@ SELECTED_CLASS_NAMES = [
     "cloud",
     "dolphin",
     "elephant",
-    "forest",
-    "man",
-    "keyboard",
-    "pickup_truck",
-    "motorcycle",
-    "mushroom",
-    "rose",
-    "sunflower",
+    "lamp",
+    "otter",
+    "raccoon",
+    "seal",
+    "squirrel",
+    "streetcar",
+    "train",
+    "willow_tree",
 ]
 
 N_PER_CLASS = 60  # 60 × 15 = 900 test points total (dense enough for t-SNE)
