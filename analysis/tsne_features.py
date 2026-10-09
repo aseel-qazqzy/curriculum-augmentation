@@ -446,13 +446,14 @@ def main():
     metrics = {}
     accs = {}  # test accuracy per method for panel subtitles
 
-    # Known test accuracies (seed 42, 19-op, 100ep) — shown under each panel title
+    # Test accuracies shown under each panel title: 5-seed means from thesis Table 4.2
+    # (Protocol A, 19-op, 100ep). No Augmentation is single-seed (42).
     KNOWN_ACCS = {
         "No Augmentation": 72.86,
-        "Static Mixing": 77.43,
-        "ETS": 81.35,
-        "LPS": 81.36,
-        "EGS": 79.83,
+        "Static Mixing": 77.60,
+        "ETS": 81.39,
+        "LPS": 81.44,
+        "EGS": 79.75,
     }
 
     for title, ckpt_name in RUNS.items():

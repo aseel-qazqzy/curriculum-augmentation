@@ -54,10 +54,10 @@ RUNS_CIFAR100 = {
     "EGS": "egs_v2_100ep_s42_ep100_cifar100_s42_p19",
 }
 KNOWN_ACCS_CIFAR100 = {
-    "Static Mixing": 77.43,
-    "ETS": 81.35,
-    "LPS": 81.36,
-    "EGS": 79.83,
+    "Static Mixing": 77.60,
+    "ETS": 81.39,
+    "LPS": 81.44,
+    "EGS": 79.75,
 }
 
 # 6 semantically diverse CIFAR-100 classes (subset of tsne_features.py's 15) —
